@@ -95,6 +95,11 @@ function getvarnames(symbols=true)
      "V21602","ER2002","ER5002","ER7002","ER10002", "ER13002","ER17002",
      "ER21002","ER25002","ER36002","ER42002","ER47302"]
 
+  family_education_head =
+    ["V313",   "V794", "V1485", "V2197", "V2823", "V3241", "V3663", "V4198",
+     "V5074",	"V5647", "V6194", "V6787", "V7433", "V8085", "V8709", "V9395",
+     "V11042",	"V12400",	"V13640",	"V14687",	"V16161",	"V17545",	"V18898"]
+
   if symbols
     individual_age =
       [convert(Symbol, individual_age[i]) for i = 1:length(individual_age)]
