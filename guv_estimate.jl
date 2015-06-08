@@ -39,12 +39,9 @@ function estimARMA(CovN::Array{Float64, 3}, Num::Array{Int64, 3}, PH::Int64)
   end
 
   # for m=1:5
-  X0[2]=0.04
-  X0[3]=0.02
-  X0[5]=0.0005
-  X0[6]=-0.5
+  X0[2]=0.04; X0[3]=0.02; X0[5]=0.0005; X0[6]=-0.5
 
- for k=1:2, i=1:2, j=1:2
+  for k=1:2, i=1:2, j=1:2
     X0[1] = 0.95 - (j-1)*0.20 # ρ (result: 0.821)
     X0[2] = 0.05 - (i-1)*0.02 # σ²(ɛ) (0.047)
     X0[3] = 0.02 + (i-1)*0.02 # σ²(η) (0.029)
@@ -56,7 +53,6 @@ function estimARMA(CovN::Array{Float64, 3}, Num::Array{Int64, 3}, PH::Int64)
     (params,Fval,exitflag) =
       fminsearch(@MinDistOBJ_NEW_April_04,X0,options,V,Ivarcov,Num,Tmax,
                  nlag,agecell,Cmax,tik, Ageyes,choW,Ve,Vn,PH)
-    params
 
     #================= STAGE 2====================================#
 
@@ -142,17 +138,13 @@ function MinDistOBJ_DV_NEW_April_04(params::Vector{Float64}, V::Array{Float64,3}
   # varcov = zeros(T,T,size(V,3))
   varcov = Array(Float64, (hmax-int(agecell/2),hmax-int(agecell/2),Cmax))
 
-  ro = params[1]
-  vare = params[2]
-  varn = params[3]
-  var0 = params[4]
-  var1 = params[5]
-  corr01 = params[6]
+  ro = params[1]; vare = params[2]; varn = params[3]
+  var0 = params[4]; var1 = params[5]; corr01 = params[6]
 
   if (var0>=0) & (var1>=0)
     cov01 = corr01*sqrt(var0*var1)
   else
-    cov01=0
+    cov01 = 0
   end
 
   if Ageyes==1
