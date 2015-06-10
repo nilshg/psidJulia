@@ -1,5 +1,7 @@
-CovN = randn(26,26,12)
-Num = round(20*randn(26,26,12))
+using HDF5
+
+CovN = h5read("C:/Users/tew207/My Documents/GitHub/psidJulia/output.h5", "Covariances")
+Num = h5read("C:/Users/tew207/My Documents/GitHub/psidJulia/output.h5", "Observations")
 
 
 function estimARMA(CovN::Array{Float64, 3}, Num::Array{Int64, 3}, PH::Int64)
