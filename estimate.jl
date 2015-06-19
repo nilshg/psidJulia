@@ -2,12 +2,12 @@ using HDF5, Optim
 
 path = "C:/Users/tew207/My Documents/GitHub/psidJulia/"
 
-CovN = h5read(path*"output.h5", "Covariances")
+CovEmp = h5read(path*"output.h5", "Covariances")
 Num = h5read(path*"output.h5", "Observations")
 
 # Invert each cohort's matrix, as HDF5 stores in row-major order
 for i = 1:size(CovN, 3)
-  CovN[:, :, i] = CovN[:, :, i]'
+  CovEmp[:, :, i] = CovEmp[:, :, i]'
   Num[:, :, i] = Num[:, :, i]'
 end
 
@@ -20,7 +20,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
   # Parameters
   lastcoh = 1977; agecell = 4; tmax = 30; nlag = 29;
   AA = 0; choW = 1; Ve = 1; Vn = 1;
-  obs_indicator = Num .> 10
+  obs_indicator = convert(Array{Int64,3}, Num .> 10)
   cmax = size(CovEmp,3)
   tik = lastcoh - 1966  # NOTE: this was "Ylastcoh" in original code
   hmax = size(CovEmp,1) + int(agecell/2)
@@ -68,7 +68,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
       for h = 1:hmax-2
         ip_part_var[h, t] = varα + hip*2*covαβ*h + hip*varβ*h^2
         varz[h, 1] = [[mypi[1]*varη for j = 0:(h-1)]'*[ρ^(2*j) for j = 0:(h-1)]][1]
-        if (t > 1) & (h>1)
+        if (t > 1) && (h>1)
           varz[h, t] = ρ^2*varz[h-1,t-1] + mypi[t]*varη
         end
         vary[h,t] = ip_part_var[h,t] + varz[h,t] + myeps[t]*varϵ
@@ -86,14 +86,12 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     varcov = zeros(size(CovEmp))
 
     for coh = 1:cmax, h1 = 1:hmax-(agecell/2), h2 = max(1,h1-nlag+1):h1
-      if ((h1+tik-coh >= 1) & ((h1+tik-coh) <= tmax))
+      if ((h1+tik-coh >= 1) && ((h1+tik-coh) <= tmax))
         if (h1!=h2)
           varcov[h1,h2,coh] = covary[h1, h1-h2, h1+tik-coh]
         else
           varcov[h1,h2,coh] = vary[h1, h1+tik-coh]
         end
-      else
-        obs_indicator[h1,h2,coh] = 0
       end
     end
 
@@ -138,11 +136,12 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
         myfi[h] = [fivec'*hvec[:,h]][1]
       end
     else
-      myfi = ones(1, hmax)
+      myfi = ones(hmax)
     end
 
     mypi = Array(Float64, tmax)
     myeps = similar(mypi)
+
     if Ve==1 & Vn==1
       mypi[2:tmax] = params[7+2*AA:7+2*AA+tmax-2]
       mypi[1] = 1
@@ -150,17 +149,17 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
       myeps[tmax] = 1
       myeps[2:tmax-1] = params[7+2*AA+tmax-1:7+2*AA+2*tmax-4]
     elseif Ve==1 & Vn==0
-      mypi=ones(1,tmax)
+      mypi=ones(tmax)
       myeps[1] = 1
       myeps[tmax] = 1
       myeps[2:tmax-1] = params[7+2*AA:7+2*AA+tmax-3]
     elseif Ve==0 & Vn==1
       mypi[1] = 1
       mypi[2:tmax] = params[7+2*AA:7+2*AA+tmax-2]
-      myeps = ones[1,tmax]
+      myeps = ones(tmax)
     else
-      mypi = ones[1,tmax]
-      myeps = ones[1,tmax]
+      mypi = ones(tmax)
+      myeps = ones(tmax)
     end
 
     myeps = myeps.^2
@@ -177,9 +176,9 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     # weighted empirical covariances (from CovEmp)
     empir = zeros(tmax,tmax)
 
-    for t1=1:tmax, t2=1:t1, coh=1:cmax
-      if (t2-tik+coh>=1) & (t1-tik+coh<=hmax-(agecell/2+1))
-        if (weight[t1-tik+coh,t2-tik+coh,coh] > 0)
+    for t1=1:tmax, t2=1:t1
+      for coh=1:cmax
+        if (t2-tik+coh > 0) && (t1-tik+coh <= hmax-(agecell/2))
           obs = weight[t1-tik+coh, t2-tik+coh, coh]
           nobs[t1, t2] += obs
           theor[t1,t2] += obs.*varcov[t1-tik+coh,t2-tik+coh,coh]
@@ -187,7 +186,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
         end
       end
 
-      if nobs[t1,t2] >= 1
+      if nobs[t1,t2] > 0
         theor[t1,t2] = theor[t1,t2]/nobs[t1,t2]
         empir[t1,t2] = empir[t1,t2]/nobs[t1,t2]
       else
@@ -227,6 +226,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
              + penalty10 + penalty11 + penaltyVAR + penaltycorr1 + penaltycorr2
 
     temp = [empir-theor][:]
+
     obj = [(temp'*temp)*(1+penalty)][1]
   end
 
