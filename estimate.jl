@@ -112,7 +112,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, PH::Int64)
     choW==0 ? weight = obs_indicator : weight = Num
 
     # Estimate with or without profile heterogeneity
-    PH==1 ? qq=1 : qq=0
+    PH==1 ? qq = 1 : qq = 0
 
     # maximum experience: T + 2 (WHY?)
     hmax = int(size(CovEmp,1)+(agecell/2))
@@ -233,12 +233,5 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, PH::Int64)
   end
 
   optimum = optimize(objective, X0)
-
-  #parTEMP[:,i,j,k] = optimum.minimum
-  #FvalTEMP[i,j,k] = optimum.fminimum
-  #flagTEMP[i,j,k] = exitflag
-  #X0 = params
   return optimum.minimum
 end
-
-@time estimARMA(CovN, Num, 1)
