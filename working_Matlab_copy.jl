@@ -25,7 +25,7 @@ function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
       vary[h, t] =
         ( ip_part[h] + ϕ[t]*varϵ
          + sum(varη*((((ρ^2).^[(t-1):-1:0]).*π[1:t])))
-         + sum(varη*π[1]*(((ρ^2).^[h-1:-1:t]))) )
+         + sum(varη*π[1]*(((ρ^2).^[(h-1):-1:t]))) )
     end
   end
 
