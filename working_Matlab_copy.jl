@@ -16,7 +16,7 @@ function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
   vary = zeros(hmax, tmax)
 
   for t = 1:tmax, h = 3:hmax
-    ip_part[h]= varα + hip*(varβ*h^2. + 2*covαβ*h)
+    ip_part[h] = varα + hip*(varβ*h^2. + 2*covαβ*h)
     if h <= t
       vary[h,t] =
         (ip_part[h] + ϕ[t]*varϵ
