@@ -1,4 +1,4 @@
-using HDF5, Optim
+using HDF5, Optim, NLopt
 
 path = "C:/Users/tew207/My Documents/GitHub/psidJulia/"
 
@@ -6,80 +6,71 @@ CovEmp = h5read(path*"output.h5", "Covariances")
 Num = h5read(path*"output.h5", "Observations")
 
 # Invert each cohort's matrix, as HDF5 stores in row-major order
-for i = 1:size(CovN, 3)
+for i = 1:size(CovEmp, 3)
   CovEmp[:, :, i] = CovEmp[:, :, i]'
   Num[:, :, i] = Num[:, :, i]'
 end
 
-function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64)
+function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64,
+                   use_NLopt::Int64)
   # INPUTS: CovEmp (empirical covariances, age*age*cohorts)
   #         Num (# of observations used to calculate covariances in CovEmp)
   # hip = 1 estimates HIP process
   # hip = 0 estimates RIP process
 
   # Parameters
-  lastcoh = 1977; agecell = 4; tmax = 30; nlag = 29;
-  AA = 0; choW = 1; Ve = 1; Vn = 1;
+  lastcoh = 1977; agecell = 4; tmax = 29; nlag = 29;
   obs_indicator = convert(Array{Int64,3}, Num .> 10)
   cmax = size(CovEmp,3)
-  tik = lastcoh - 1966  # NOTE: this was "Ylastcoh" in original code
-  hmax = size(CovEmp,1) + int(agecell/2)
+  tik = lastcoh - 1966
+  hmax = size(CovEmp,1)
 
   # start with some initial guess x_0
-  mypi1 = linspace(1,1.2,13)
-  mypi1 = [mypi1,linspace(1.2,1.7,3)]
+  π_1 = linspace(1, 1.2, 13)
+  π_1 = [π_1, linspace(1.2, 1.7, 3)]
   if tmax > 20
-    mypi1 = [mypi1,linspace(1.7,1.7,tmax-17)]
-  end
-  myeps1 = linspace(1,1,tmax-1)
-
-  x_0 = zeros(7 + tmax-2 + length(myeps1))
-
-  if Ve==1 & Vn==1
-      x_0[7+2*AA:7+2*AA+tmax-2] = mypi1
-      x_0[7+2*AA+tmax-1:7+2*AA+2*tmax-3] = myeps1
-  elseif Ve==1 & Vn==0
-      x_0[7+2*AA:7+2*AA+tmax-3] = myeps1
-  elseif Ve==0 & Vn==1
-      x_0[7+2*AA:7+2*AA+tmax-2] = mypi1
+    π_1 = [π_1, linspace(1.7, 1.7, tmax-16)]
   end
 
-  # for m=1:5
-  x_0[2]=0.04; x_0[3]=0.02; x_0[5]=0.0005; x_0[6]=-0.5
+  ϕ_1 = linspace(1,1,tmax)
+
+  x_0 = zeros(6 + 2*tmax)
+  x_0[7:7+tmax-1] = π_1
+  x_0[7+tmax:end] = ϕ_1
+
+  x_0[2] = 0.04; x_0[3] = 0.02; x_0[5] = 0.0005; x_0[6] = -0.5
   x_0[1:6] = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]
 
-  ################################################################################
+  ##############################################################################
   ## Function to construct theoretical var-cov matrix given parameters of income
   ## process
-  ################################################################################
+  ##############################################################################
 
   function theoretical_varcov(varα::Float64, varβ::Float64, covαβ::Float64,
-    ρ::Float64, varη::Float64, varϵ::Float64, mypi::Array{Float64,1},
-    myeps::Array{Float64,1}, hip::Int64)
+    ρ::Float64, varη::Float64, varϵ::Float64, π::Array{Float64,1},
+    ϕ::Array{Float64,1}, hmax::Int64, tmax::Int64, nlag::Int64, hip::Int64)
 
     # Calculate CovEmpariances
-    ip_part_var = zeros(hmax, tmax)
-    varz = zeros(hmax, tmax)
-    vary = zeros(hmax, tmax)
-    covary = zeros(hmax, nlag, tmax)
+    ip_part_var = zeros(hmax); varz = zeros(hmax, tmax)
+    vary = zeros(hmax, tmax); covary = zeros(hmax, nlag, tmax)
 
     for t = 1:tmax
-      varz[1, t] = mypi[t]*varη
+      varz[1, t] = π[t]*varη
       for h = 1:hmax-2
-        ip_part_var[h, t] = varα + hip*2*covαβ*h + hip*varβ*h^2
-        varz[h, 1] = [[mypi[1]*varη for j = 0:(h-1)]'*[ρ^(2*j) for j = 0:(h-1)]][1]
+        ip_part_var[h] = varα + hip*2*covαβ*h + hip*varβ*h^2
+        varz[h, 1] = [[π[1]*varη for j = 0:(h-1)]'*[ρ^(2*j) for j = 0:(h-1)]][1]
         if (t > 1) && (h>1)
-          varz[h, t] = ρ^2*varz[h-1,t-1] + mypi[t]*varη
+          varz[h, t] = ρ^2*varz[h-1,t-1] + π[t]*varη
         end
-        vary[h,t] = ip_part_var[h,t] + varz[h,t] + myeps[t]*varϵ
+        vary[h,t] = ip_part_var[h] + varz[h,t] + ϕ[t]*varϵ
       end
     end
 
     # Calculate Autocovariances
     for h = 1:hmax, t = 1:tmax
-      for n = 1:min(h-agecell/2+1, t-1, nlag)
+      for n = 1:min(hmax-h, tmax-t, nlag)
         covary[h, n, t] = varα + hip*2*covαβ*(h+n) + hip*varβ*h*(h+n)
-          + (ρ^n)*(varz[h, t])
+                          + (ρ^n)*(varz[h, t])
       end
     end
 
@@ -98,23 +89,63 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     return varcov
   end
 
-  ################################################################################
+  ##############################################################################
+
+  function theoretical_varcov_guv(varα::Float64, varβ::Float64, covαβ::Float64,
+    varϵ::Float64, varη::Float64, ρ::Float64, ϕ::Array{Float64,1},
+    π::Array{Float64,1}, hmax::Int64, tmax::Int64, nlag::Int64, hip::Int64)
+
+    ip_part = zeros(hmax)
+    vary = zeros(hmax, tmax)
+
+    for t = 1:tmax, h = 3:hmax
+      ip_part[h] = varα + hip*(varβ*h^2. + 2*covαβ*h)
+      if h <= t
+        vary[h, t] =
+          (ip_part[h] + ϕ[t]*varϵ
+           + sum(varη*(((ρ^2).^[(h-1):-1:0]).*π[t-h+1:t])) )
+      else
+        vary[h, t] =
+          ( ip_part[h] + ϕ[t]*varϵ
+           + sum(varη*((((ρ^2).^[(t-1):-1:0]).*π[1:t])))
+           + sum(varη*π[1]*(((ρ^2).^[(h-1):-1:t]))) )
+      end
+    end
+
+    covy = zeros(hmax, nlag, tmax)
+
+    for t= 1:tmax, h = 3:hmax, n = 1:min(h-3,t-1,nlag)
+      covy[h, n, t] =
+        ( varα + hip*(varβ*h*(h-n) + covαβ*(2*h-n))
+         + (ρ^n)*(vary[h-n,t-n]-ip_part[h-n] - ϕ[t-n]*varϵ) )
+    end
+
+    varcov = zeros(hmax-2, hmax-2, cmax)
+
+    for coh = 1:cmax, h1 = 1:hmax-2, h2 = max(1,h1-nlag+1):h1
+      if (h1+tik-coh >= 1) && (h1+tik-coh <= tmax)
+        if (h1!=h2)
+          varcov[h1, h2, coh] = covy[h1+2, h1-h2, h1+tik-coh]
+        else
+          varcov[h1, h2, coh] = vary[h1+2, h1+tik-coh]
+        end
+      end
+    end
+
+    return varcov
+  end
+
+  ##############################################################################
   ## Objective function, depending on observed and theoretical covariance
   ## structure
-  ################################################################################
+  ##############################################################################
 
   function objective(params::Vector{Float64}, CovEmp=CovEmp,
-    obs_indicator=obs_indicator, Num=Num, tmax=tmax, nlag=nlag, agecell=agecell,
-    cmax=cmax, tik=tik, AA=AA, choW=choW, Ve=Ve, Vn=Vn, hip=hip)
+    obs_indicator=obs_indicator, weight=Num, tmax=tmax, nlag=nlag, agecell=agecell,
+    cmax=cmax, tik=tik, hip=hip)
 
-    # Not sure yet what this is doing
-    choW==0 ? weight = obs_indicator : weight = Num
-
-    # Estimate with or without profile heterogeneity
-    hip==1 ? qq = 1 : qq = 0
-
-    # maximum experience: T + 2 (WHY?)
-    hmax = int(size(CovEmp,1)+(agecell/2))
+    # maximum experience: T + 2
+    hmax = size(CovEmp,1) + 2
 
     # varcov = zeros(T,T,size(CovEmp,3))
     varcov = zeros(size(CovEmp))
@@ -122,55 +153,27 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     ρ = params[1]; varϵ = params[2]; varη = params[3]
     varα = params[4]; varβ = params[5]; corrαβ = params[6]
 
-    varα*varβ != 0 ? covαβ = corrαβ*sqrt(abs(varα*varβ)) : covαβ = 0
+    varα*varβ != 0 ? covαβ = corrαβ*sqrt(abs(varα*varβ)) : covαβ = 0.0
 
-    hvec = Array(Float64, (3, hmax))
-    myfi = Array(Float64, hmax)
+    π = zeros(tmax)
+    ϕ = zeros(tmax)
 
-    if AA==1
-      fi1=params[7]
-      fi2=params[8]
-      fivec = [1.0,fi1,fi2]
-      for h = 1:hmax
-        hvec[:,h] = [1.0,(h-1),(h-1)^2]
-        myfi[h] = [fivec'*hvec[:,h]][1]
-      end
-    else
-      myfi = ones(hmax)
-    end
+    π[1] = 1
+    π[2:tmax] = params[7:7+tmax-2]
+    ϕ[1] = 1
+    ϕ[2:tmax-1] = params[7+tmax:7+2*tmax-3]
+    ϕ[tmax] = 1
 
-    mypi = Array(Float64, tmax)
-    myeps = similar(mypi)
-
-    if Ve==1 & Vn==1
-      mypi[2:tmax] = params[7+2*AA:7+2*AA+tmax-2]
-      mypi[1] = 1
-      myeps[1] = 1
-      myeps[tmax] = 1
-      myeps[2:tmax-1] = params[7+2*AA+tmax-1:7+2*AA+2*tmax-4]
-    elseif Ve==1 & Vn==0
-      mypi=ones(tmax)
-      myeps[1] = 1
-      myeps[tmax] = 1
-      myeps[2:tmax-1] = params[7+2*AA:7+2*AA+tmax-3]
-    elseif Ve==0 & Vn==1
-      mypi[1] = 1
-      mypi[2:tmax] = params[7+2*AA:7+2*AA+tmax-2]
-      myeps = ones(tmax)
-    else
-      mypi = ones(tmax)
-      myeps = ones(tmax)
-    end
-
-    myeps = myeps.^2
-    mypi = mypi.^2
+    ϕ .^= 2
+    π .^= 2
 
     # Construct theoretical var-cov matrix
     varcov =
-      theoretical_varcov(varα, varβ, covαβ, ρ, varη, varϵ, mypi, myeps, hip)
+      theoretical_varcov_guv(varα, varβ, covαβ, varϵ, varη, ρ, ϕ, π,
+                             hmax, tmax, nlag, hip)
 
     # matrices to hold observations for
-    nobs = zeros(tmax,tmax)
+    ∑n = zeros(tmax,tmax)
     # weighted theoretical covariances (from varcov)
     theor = zeros(tmax,tmax)
     # weighted empirical covariances (from CovEmp)
@@ -178,61 +181,64 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
 
     for t1=1:tmax, t2=1:t1
       for coh=1:cmax
-        if (t2-tik+coh > 0) && (t1-tik+coh <= hmax-(agecell/2))
-          obs = weight[t1-tik+coh, t2-tik+coh, coh]
-          nobs[t1, t2] += obs
-          theor[t1,t2] += obs.*varcov[t1-tik+coh,t2-tik+coh,coh]
-          empir[t1,t2] += obs.*CovEmp[t1-tik+coh,t2-tik+coh,coh]
+        if (t2-tik+coh > 0) && (t1-tik+coh+1 <= hmax-2)
+          n = weight[t1-tik+coh, t2-tik+coh, coh]
+          ∑n[t1, t2] += n
+          theor[t1,t2] += n.*varcov[t1-tik+coh,t2-tik+coh,coh]
+          empir[t1,t2] += n.*CovEmp[t1-tik+coh,t2-tik+coh,coh]
         end
       end
 
-      if nobs[t1,t2] > 0
-        theor[t1,t2] = theor[t1,t2]/nobs[t1,t2]
-        empir[t1,t2] = empir[t1,t2]/nobs[t1,t2]
+      if ∑n[t1,t2] > 0
+        theor[t1,t2] = theor[t1,t2]/∑n[t1,t2]
+        empir[t1,t2] = empir[t1,t2]/∑n[t1,t2]
       else
         theor[t1,t2] = 0
         empir[t1,t2] = 0
       end
     end
 
-    penalty1 = 10000000*(min(0.0, varϵ-0.0005))^2
-    penalty2 = 100000*(min(0.0, varη-0.01))^2
-    penalty8 = 100000*(max(0, ρ-1.2))^2
-    penalty3 = 100000*((min(0, ρ+0.4))^2)
-
-    if (maximum(mypi)*maximum(myfi)>=5)
-      penalty9 = 10000000*(maximum(mypi)*maximum(myfi)-3)^2
-    else
-      penalty9 = 0
-    end
-
-    if (minimum(mypi)<0.5)
-      penalty10 = 100000*(((minimum(mypi))-0.5)^2)
-    else
-      penalty10 = 0
-    end
-
-    if (minimum(myfi)<0.05)
-      penalty11 = 100000*(((minimum(mypi))-0.05)^2)
-    else
-      penalty11 = 0
-    end
-
-    penaltycorr1 = 10000000*(min(corrαβ+1, 0)^2)
-    penaltycorr2 = 10000000*(max(corrαβ-1, 0)^2)
-    penaltyVAR = 10000000*(min(0.0, varβ)^2)
-
-    penalty = penalty1 + penalty2 + penalty3 + penalty8 + penalty9
-             + penalty10 + penalty11 + penaltyVAR + penaltycorr1 + penaltycorr2
-
     temp = [empir-theor][:]
-
-    obj = [(temp'*temp)*(1+penalty)][1]
+    obj = [(temp'*temp)][1]
   end
 
-  optimum = optimize(objective, x_0)
-  return optimum.minimum
+  lb = [[-0.4, 5e-4, 5e-4, 1e-6, 1e-6, -1], 0.3*ones(2*(tmax))]
+  ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]
+
+  if use_NLopt == 1
+    opt = Opt(:GN_ESCH, length(x_0))
+    lower_bounds!(opt, lb)
+    upper_bounds!(opt, ub)
+    min_objective!(opt, objective)
+    ftol_abs!(opt, 1e-12)
+    maxeval!(opt, 2000)
+    maxtime!(opt, 200)
+    (optf, optx, flag) = optimize(opt, x_0)
+  else
+    optimum = Optim.optimize(objective, x_0, iterations = 1500)
+  end
 end
 
-@time hip_estimates = estimARMA(CovN, Num, 1)
-@time rip_estimates = estimARMA(CovN, Num, 0)
+function print_results(hip, rip)
+  hipf = hip.f_minimum
+  ripf = rip.f_minimum
+  hipx = hip.minimum
+  ripx = rip.minimum
+  hipflag = hip.f_converged
+  ripflag = rip.f_converged
+  @printf "The HIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
+  @printf "The RIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
+end
+
+function print_results(hipflag, hipf, hipx, ripflag, ripf, ripx)
+  @printf "The HIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
+  @printf "The RIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
+end
+
+#@time hip =  estimARMA(CovEmp, Num, 1, 0)
+#@time rip =  estimARMA(CovEmp, Num, 0, 0)
+#print_results(hip, rip)
+
+@time (hipf, hipx, hipflag) = estimARMA(CovEmp, Num, 1, 1)
+@time (ripf, ripx, ripflag) = estimARMA(CovEmp, Num, 0, 1)
+print_results(hipflag, hipf, hipx, ripflag, ripf, ripx)
