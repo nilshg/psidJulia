@@ -18,11 +18,11 @@ function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
   for t = 1:tmax, h = 3:hmax
     ip_part[h] = varα + hip*(varβ*h^2. + 2*covαβ*h)
     if h <= t
-      vary[h,t] =
+      vary[h, t] =
         (ip_part[h] + ϕ[t]*varϵ
          + sum(varη*(((ρ^2).^[(h-1):-1:0]).*π[t-h+1:t])) )
     else
-      vary[h,t] =
+      vary[h, t] =
         ( ip_part[h] + ϕ[t]*varϵ
          + sum(varη*((((ρ^2).^[(t-1):-1:0]).*π[1:t])))
          + sum(varη*π[1]*(((ρ^2).^[h-1:-1:t]))) )
@@ -32,7 +32,7 @@ function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
   covy = zeros(hmax, nlag, tmax)
 
   for t= 1:tmax, h = 3:hmax, n = 1:minimum([h-3,t-1,nlag])
-      covy[h,n,t] =
+      covy[h, n, t] =
         ( varα + hip*(varβ*h*(h-n) + covαβ*(2*h-n))
          + (ρ^n)*(vary[h-n,t-n]-ip_part[h-n] - ϕ[t-n]*varϵ) )
   end
@@ -42,9 +42,9 @@ function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
   for coh = 1:cmax, h1 = 1:hmax-2, h2 = max(1,h1-nlag+1):h1
     if (h1+tik-coh >= 1) && (h1+tik-coh <= tmax)
       if (h1!=h2)
-        varcov[h1,h2,coh] = covy[h1+2,h1-h2,h1+tik-coh]
+        varcov[h1, h2, coh] = covy[h1+2, h1-h2, h1+tik-coh]
       else
-        varcov[h1,h2,coh] = vary[h1+2,h1+tik-coh]
+        varcov[h1, h2, coh] = vary[h1+2, h1+tik-coh]
       end
     end
   end
