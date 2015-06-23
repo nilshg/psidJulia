@@ -31,7 +31,7 @@ function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
 
   covy = zeros(hmax, nlag, tmax)
 
-  for t= 1:tmax, h = 3:hmax, n = 1:minimum([h-3,t-1,nlag])
+  for t= 1:tmax, h = 3:hmax, n = 1:min(h-3,t-1,nlag)
       covy[h, n, t] =
         ( varα + hip*(varβ*h*(h-n) + covαβ*(2*h-n))
          + (ρ^n)*(vary[h-n,t-n]-ip_part[h-n] - ϕ[t-n]*varϵ) )
