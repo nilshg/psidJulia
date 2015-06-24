@@ -140,7 +140,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
   ## structure
   ##############################################################################
 
-  function objective(params::Vector{Float64}, CovEmp=CovEmp,
+  function objective(params::Vector{Float64}, grad, CovEmp=CovEmp,
     obs_indicator=obs_indicator, weight=Num, tmax=tmax, nlag=nlag, agecell=agecell,
     cmax=cmax, tik=tik, hip=hip)
 
@@ -206,13 +206,15 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
   ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]
 
   if use_NLopt == 1
-    opt = Opt(:GN_ESCH, length(x_0))
+    opt = Opt(:G_MLSL, length(x_0))
+    localopt = Opt(:LN_NELDERMEAD, length(x_0))
+    local_optimizer!(opt, localopt)
     lower_bounds!(opt, lb)
     upper_bounds!(opt, ub)
     min_objective!(opt, objective)
     ftol_abs!(opt, 1e-12)
-    maxeval!(opt, 2000)
-    maxtime!(opt, 200)
+    maxeval!(opt, 50000)
+    maxtime!(opt, 500)
     (optf, optx, flag) = optimize(opt, x_0)
   else
     optimum = Optim.optimize(objective, x_0, iterations = 1500)
@@ -226,15 +228,16 @@ function print_results(hip, rip)
   ripx = rip.minimum
   hipflag = hip.f_converged
   ripflag = rip.f_converged
-  @printf "The HIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
-  @printf "The RIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
+  @printf "The HIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.4f, corr(α,β) = %.3f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
+  @printf "The RIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.4f, corr(α,β) = %.3f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
 end
 
 function print_results(hipflag, hipf, hipx, ripflag, ripf, ripx)
-  @printf "The HIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
-  @printf "The RIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.5f,\n var(α) = %.3f, var(β) = %.3f, corr(α,β) = %.3f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
+  @printf "The HIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.5f, corr(α,β) = %.2f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
+  @printf "Paper Results HIP:\n ρ = 0.821, var(ɛ) = 0.047, var(η) = 0.029\n var(α) = 0.022, var(β) = 0.00038, corr(α,β) = -0.23\n"
+  @printf "The RIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.5f, corr(α,β) = %.2f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
+  @printf "Paper Results RIP:\n ρ = 0.988, var(ɛ) = 0.061, var(η) = 0.015\n var(α) = 0.058\n"
 end
-
 #@time hip =  estimARMA(CovEmp, Num, 1, 0)
 #@time rip =  estimARMA(CovEmp, Num, 0, 0)
 #print_results(hip, rip)
