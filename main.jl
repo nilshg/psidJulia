@@ -1,6 +1,6 @@
 using DataFrames
 
-include("varnames.jl")
+include("PSIDvarnames.jl")
 
 (individual_age, individual_grades_completed,
  individual_id_interview_number, individual_relationship_to_head,

@@ -1,0 +1,934 @@
+{
+    "beaker": "2",
+    "evaluators": [
+        {
+            "name": "Html",
+            "plugin": "Html",
+            "view": {
+                "cm": {
+                    "mode": "htmlmixed"
+                }
+            }
+        },
+        {
+            "name": "Latex",
+            "plugin": "Latex",
+            "view": {
+                "cm": {
+                    "mode": "stex"
+                }
+            }
+        },
+        {
+            "name": "JavaScript",
+            "plugin": "JavaScript",
+            "jsSetting2": "",
+            "jsSetting1": "",
+            "view": {
+                "cm": {
+                    "mode": "javascript",
+                    "background": "#FFE0F0"
+                }
+            }
+        },
+        {
+            "name": "Julia",
+            "plugin": "Julia",
+            "imports": "",
+            "supplementalClassPath": "",
+            "view": {
+                "cm": {
+                    "mode": "julia"
+                }
+            }
+        },
+        {
+            "name": "IPython",
+            "plugin": "IPython",
+            "imports": "",
+            "supplementalClassPath": "",
+            "view": {
+                "cm": {
+                    "mode": "python"
+                }
+            }
+        }
+    ],
+    "cells": [
+        {
+            "id": "markdownPPZ9RV",
+            "type": "markdown",
+            "body": [
+                "First, read in Guvenen's original data file:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codeuhILbS",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "import numpy as np; import pandas as pd; import matplotlib.pyplot as plt; import statsmodels.formula.api as sm",
+                    "%matplotlib inline",
+                    "",
+                    "data = pd.read_stata('/Users/tew207/Desktop/RED_ACCEPTED_FINAL_DATA_CODE/ready_newdata.dta')"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 2139
+            },
+            "evaluatorReader": true,
+            "lineCount": 4
+        },
+        {
+            "id": "markdownsJv0N7",
+            "type": "markdown",
+            "body": [
+                "Some preliminary defintions:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "code2VgL6J",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "tinit = 67; tlast = 96",
+                    "ageinit = 20; agelast = 64",
+                    "agecell = 4",
+                    "minyrs = 20",
+                    "nlag = 29",
+                    "agelb = 19; ageub = agelb + agecell",
+                    "agemidpt = (agelb+ageub)/2  # = 21",
+                    "agemax = (agelast + agelast - agecell)/2 - (ageub+agelb)/2  # = 41 (maximum age a cohort can reach)",
+                    "oldcoh = agelast - minyrs - ageinit - agecell/2   # number of cohort existing in the first year",
+                    "newcoh = tlast - (minyrs-1) - (tinit+1)  # number of cohorts entering after first year",
+                    "maxcoh = oldcoh + newcoh  # total number of cohorts;"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 349
+            },
+            "evaluatorReader": true,
+            "lineCount": 11
+        },
+        {
+            "id": "markdownZhWTcg",
+            "type": "markdown",
+            "body": [
+                "Some changes to the variables containing information about educational achievement (basically interpolating grades in 1969, 1970, 1971, 1972, 1973 and 1974):"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "code7cMcGp",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "for i in range(94,99):",
+                    "    data.rename(columns={\"upedu\"+str(i)+\"h\": \"grade\"+str(i)}, inplace=True)",
+                    "",
+                    "data[\"grade72\"] = data[\"edcn72\"]",
+                    "data.loc[data[\"grade72\"]>25, \"grade72\"] = np.nan # take out values of grade above 25",
+                    "data[\"grade75\"] = data[\"edcn75\"]",
+                    "data.loc[data[\"grade75\"]>25, \"grade75\"] = np.nan",
+                    "",
+                    "data[\"grade69\"] = 0",
+                    "data.loc[(data.seqno68==1) & (data.seqno69==1), \"grade69\"] = data[(data.seqno68==1) & (data.seqno69==1)].grade68",
+                    "cond = (data.seqno72==1) & (data.seqno69==1) & (data.grade69==0)",
+                    "data.loc[cond, \"grade69\"] = data[cond].grade72",
+                    "",
+                    "data.loc[(data.seqno68==1) & (data.seqno70==1), \"grade70\"] = data[(data.seqno68==1) & (data.seqno69==1)].grade68",
+                    "cond = (data.seqno70==1) & (data.seqno72==1) & (data.grade69==0)",
+                    "data.loc[cond, \"grade70\"] = data[cond].grade72",
+                    "",
+                    "data.loc[(data.seqno71==1) & (data.seqno70==1), \"grade71\"] = data[(data.seqno71==1) & (data.seqno70==1)].grade70",
+                    "cond = (data.seqno71==1) & (data.seqno72==1) & (data.grade71==0)",
+                    "data.loc[cond, \"grade71\"] = data[cond].grade72",
+                    "",
+                    "data.loc[(data.seqno73==1) & (data.seqno72==1), \"grade73\"] = data[(data.seqno73==1) & (data.seqno72==1)].grade72",
+                    "cond = (data.grade73==0) & (data.seqno73==1) & (data.seqno75==1)",
+                    "data.loc[cond, \"grade73\"] = data[cond].grade75",
+                    "",
+                    "data.loc[(data.seqno74==1) & (data.seqno72==1), \"grade74\"] = data[(data.seqno74==1) & (data.seqno72==1)].grade72",
+                    "cond = (data.grade74==0) & (data.seqno74==1) & (data.seqno75==1)",
+                    "data.loc[cond, \"grade74\"] = data[cond].grade75",
+                    "",
+                    "for i in range(68, 98):",
+                    "    data.loc[data[\"grade\"+str(i)]>30, \"grade\"+str(i)] = np.nan # take out grades above 30"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 634
+            },
+            "evaluatorReader": true,
+            "lineCount": 31
+        },
+        {
+            "id": "markdownY6e5xo",
+            "type": "markdown",
+            "body": [
+                "First define a dictionary containing the relative real wages for years 1967 to 1996 (recall that in the PSID, household income refers to the year prior to the survey, i.e. the survey in 1968 asked about income in the year 1967), then replace all with missing all observations which:",
+                "",
+                "1. Head real wage less than \\$ 2 or more than \\$ 520 in 1996 prices",
+                "2. Head hours less than 520 or more than 5096",
+                "3. Positive hours and no income or positive income and no hours",
+                "",
+                "Then, create a college dummy, using the direct measure (`hdedcnXX` are the variables `V313` ff., whose value is 7 or 8 if college was completed) or proxying with more than 15 years of education for post-1990, when the direct measure is not available."
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codePnTrkJ",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "awg = {\"67\":2.85, \"68\":3.02, \"69\":3.22, \"70\":3.40, \"71\":3.63, \"72\":3.90,",
+                    "       \"73\":4.14, \"74\":4.43, \"75\":4.73, \"76\":5.06, \"77\":5.44, \"78\":5.87,",
+                    "       \"79\":6.33, \"80\":6.84, \"81\":7.43, \"82\":7.86, \"83\":8.19, \"84\":8.48,",
+                    "       \"85\":8.73, \"86\":8.92, \"87\":9.13, \"88\":9.43, \"89\":9.80, \"90\":10.19,",
+                    "       \"91\":10.50, \"92\":10.76, \"93\":11.03, \"94\":11.32, \"95\":11.64, \"96\":12.03}",
+                    "",
+                    "for i in range(67,97):",
+                    "    data[\"rawg\"+str(i)] = awg[str(i)]/data[\"prc\"+str(i)]",
+                    "    cond1 = (data[\"rhdwg\"+str(i)] <= 2*data[\"rawg\"+str(i)]/awg[\"96\"]) | (data[\"rhdwg\"+str(i)] > 400*data[\"rawg\"+str(i)]/awg[\"96\"]) ",
+                    "    cond2 = (data[\"hwkhrs\"+str(i)] > 5096) | (data[\"hwkhrs\"+str(i)] < 520)",
+                    "    cond3 = (data[\"rhdlbin\"+str(i)] == 0) & (data[\"hwkhrs\"+str(i)] > 0)",
+                    "    cond4 = (data[\"rhdlbin\"+str(i)] > 0) & (data[\"hwkhrs\"+str(i)] == 0)",
+                    "    data.loc[np.logical_or.reduce((cond1, cond2, cond3, cond4)), \"rhdlbin\"+str(i)] = np.nan ",
+                    "    ",
+                    "\"\"\"",
+                    "",
+                    "Only needed for analysis by education level: generate college dummies",
+                    "",
+                    "for i in range(68,91): # dummy variable coldum68-90, 1 if hdedcnXX is 7 or 8",
+                    "    data[\"coldum\"+str(i)] = 0",
+                    "    data.loc[(data[\"hdedcn\"+str(i)]==7) | (data[\"hdedcn\"+str(i)]==8), \"coldum\"+str(i)] = 1",
+                    "    ",
+                    "for i in range(91,98): # dummy variable coldum91-98, 1 if gradeXX is >16",
+                    "    data[\"coldum\"+str(i)] = 0",
+                    "    data.loc[(data[\"grade\"+str(i)] >= 16) & (np.isfinite(data[\"grade\"+str(i)])), \"coldum\"+str(i)] = 1",
+                    "\"\"\";"
+                ]
+            },
+            "output": {
+                "state": {},
+                "result": "<div class=\"output_subarea output_text\"><pre>'\\n\\nOnly needed for analysis by education level: generate college dummies\\n\\nfor i in range(68,91): # dummy variable coldum68-90, 1 if hdedcnXX is 7 or 8\\n    data[\"coldum\"+str(i)] = 0\\n    data.loc[(data[\"hdedcn\"+str(i)]==7) | (data[\"hdedcn\"+str(i)]==8), \"coldum\"+str(i)] = 1\\n    \\nfor i in range(91,98): # dummy variable coldum91-98, 1 if gradeXX is &gt;16\\n    data[\"coldum\"+str(i)] = 0\\n    data.loc[(data[\"grade\"+str(i)] &gt;= 16) &amp; (np.isfinite(data[\"grade\"+str(i)])), \"coldum\"+str(i)] = 1\\n'</pre></div>",
+                "selectedType": "Html",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 1371
+            },
+            "evaluatorReader": true,
+            "lineCount": 26
+        },
+        {
+            "id": "markdownI716mY",
+            "type": "markdown",
+            "body": [
+                "Then, create dummies for:",
+                "",
+                "1. Age between 20 and 64 inclusive",
+                "2. Individual is head",
+                "2. Sex male",
+                "3. Labour income positive",
+                "",
+                "and record the number of years for which all four dummies are equal to one in a new variable `kept`.",
+                "Remove all observations with less than `minyrs` years for which all dummies are one."
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codefIliiw",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "data[\"kept\"] = 0",
+                    "",
+                    "for i in range(68,98):",
+                    "    ii = i-1",
+                    "    # Dummy for 19<age<65",
+                    "    data[\"dum_age\"+str(i)] = 0 ",
+                    "    data.loc[(data[\"agehd\"+str(i)] >= ageinit) & (data[\"agehd\"+str(i)] <= agelast), \"dum_age\"+str(i)] = 1  ",
+                    "    # Dummy for head of household",
+                    "    data[\"dum_seq\"+str(i)] = 0 ",
+                    "    data.loc[data[\"seqno\"+str(i)]==1, \"dum_seq\"+str(i)] = 1 ",
+                    "    # Dummy for sex of head ",
+                    "    data[\"dum_sex\"+str(i)] = 0 ",
+                    "    data.loc[data[\"sexhd\"+str(i)]==1 ,\"dum_sex\"+str(i)] = 1  ",
+                    "    # Dummy for positive labour income",
+                    "    data[\"dum_lab\"+str(ii)] = 0 ",
+                    "    data.loc[data[\"rhdlbin\"+str(ii)]>0, \"dum_lab\"+str(ii)] = 1",
+                    "    # Dummy for agedum*headdum*sexdum*incdum ",
+                    "    data.kept += data[\"dum_age\"+str(i)]*data[\"dum_seq\"+str(i)]*data[\"dum_sex\"+str(i)]*data[\"dum_lab\"+str(ii)]",
+                    "    # Generate log income",
+                    "    data[\"logrinc\"+str(ii)] = np.log(data[\"rhdlbin\"+str(ii)])",
+                    "    # Experience is age - education (up to 12 years) - 6 ",
+                    "    data[\"edu_capped\"] = data[\"grade\"+str(i)].fillna(0)",
+                    "    data.loc[data[\"edu_capped\"]<12, \"edu_capped\"] = 12",
+                    "    data[\"expr\"+str(i)] = data[\"agehd\"+str(i)] - data[\"edu_capped\"] - 6",
+                    "    ",
+                    "print \"There are\", sum(data.kept>=minyrs), \"individuals with at least\", minyrs, \"years of valid observations\"",
+                    "data = data[data.kept>=minyrs]",
+                    "",
+                    "data[\"unidno\"] = range(1,data.shape[0]+1)",
+                    "data[\"k\"] = data.shape[0]"
+                ]
+            },
+            "output": {
+                "state": {},
+                "result": {
+                    "type": "Results",
+                    "outputdata": [
+                        {
+                            "type": "out",
+                            "value": "There are 1270 individuals with at least 20 years of valid observations\n"
+                        }
+                    ]
+                },
+                "selectedType": "Results",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 3959
+            },
+            "evaluatorReader": true,
+            "lineCount": 30
+        },
+        {
+            "id": "markdownwgw3gd",
+            "type": "markdown",
+            "body": [
+                "Drop some variables and rename those variables that might create problems when identifying stub names in wide-to-long conversion:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "code54ow9b",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "to_drop = [\"educ\", \"edcn\", \"prc\", \"rawg\", \"awg\", \"upedu\", \"_merge\", \"edu_capped\", \"yrdum\"]",
+                    "drop_all = []",
+                    "",
+                    "for d in to_drop:",
+                    "    for colname in data.columns:",
+                    "        if colname[0:len(d)]==d:",
+                    "            drop_all.append(colname)",
+                    "",
+                    "data.drop(drop_all, axis=1, inplace=True)",
+                    "",
+                    "data.rename({\"age\": \"indage\", \"sex\":\"indsex\"}, inplace=True)",
+                    "for i in range(67,100):",
+                    "    try:",
+                    "        data.rename(columns={\"agehd\"+str(i) : \"hdage\"+str(i)}, inplace=True)",
+                    "    except:",
+                    "        pass",
+                    "    try:",
+                    "        data.rename(columns={\"hdwg\"+str(i) : \"nhdwg\"+str(i)}, inplace=True)",
+                    "    except:",
+                    "        pass"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 430
+            },
+            "evaluatorReader": true,
+            "lineCount": 20
+        },
+        {
+            "id": "markdownshToQg",
+            "type": "markdown",
+            "body": [
+                "Reshape the data set from wide to long format; create squares, cubes and quadruples of experience, drop observations outside first and last year of analysis and create year dummies:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codeDDtGC3",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "data_long = pd.wide_to_long(data, ['age', 'hdage', 'dum_age', 'expr', 'hdedcn', 'hdlbin', 'nhdwg', 'rhdwg', 'grade', ",
+                    "                                   'hwkhrs', 'id', 'dum_lab', 'rhdlbin', 'logrinc', 'numfam', 'relh', 'dum_seq', ",
+                    "                                   'seqno', 'dum_sex', 'sexhd'], i=\"unidno\", j=\"year\")",
+                    "",
+                    "data_long.reset_index(inplace=True)",
+                    "data_long[\"year\"] = data_long.year.astype(int)",
+                    "",
+                    "# create squared, cubed, quadrupled experience variables",
+                    "data_long[\"agehdsq\"] = data_long[\"expr\"]**2/100",
+                    "data_long[\"agehdcu\"] = data_long[\"expr\"]**3/1000",
+                    "data_long[\"agehdqr\"] = data_long[\"expr\"]**4/10000",
+                    "",
+                    "# drop sample outside initial/last year range",
+                    "print sum(data_long.year<=tinit), \"observations below year\", tinit, \"dropped\"",
+                    "print sum(data_long.year>tlast), \"observations above year\", tlast, \"dropped\"",
+                    "data_long = data_long[(data_long.year>tinit)&(data_long.year<=tlast)]",
+                    "",
+                    "# Create year dummies, run regression",
+                    "data = pd.concat([data_long, pd.get_dummies(data_long[\"year\"], prefix=\"yrdum\")], axis=1)",
+                    "result = sm.ols(formula = \"logrinc ~ hdage + agehdsq +\"+\"+\".join([\"yrdum_\"+str(i) for i in range(68,96)]), data=data).fit()",
+                    "data = data[[col for col in data.columns if col[:5] != 'yrdum']]"
+                ]
+            },
+            "output": {
+                "state": {},
+                "result": {
+                    "type": "Results",
+                    "outputdata": [
+                        {
+                            "type": "out",
+                            "value": "1270 observations below year 67 dropped\n3810 observations above year 96 dropped\n"
+                        }
+                    ]
+                },
+                "selectedType": "Results",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 3981
+            },
+            "evaluatorReader": true,
+            "lineCount": 21
+        },
+        {
+            "id": "markdownf9qXSi",
+            "type": "markdown",
+            "body": [
+                "For each year from 1968 to 1996, fit the regression:",
+                "$$",
+                "y_t = \\beta_0 + \\beta_1 age_t + \\beta_2 expr^2_t + \\beta_3 expr^3_t + \\varepsilon_t",
+                "$$",
+                "and record the resulting contants, coefficients and residuals:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codeWCUZMJ",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "newcols = [\"alphaage\", \"alphagesq\", \"alphagecu\", \"alphacons\", \"residual\"]",
+                    "data = pd.concat([data, pd.DataFrame(index=data.index, columns=newcols, dtype=float)], axis=1)",
+                    "",
+                    "for i in range(tinit+1,tlast+1):",
+                    "    cond = (data[\"year\"]==i) & (data.seqno*data.dum_lab*data.dum_age*data.dum_sex==1)",
+                    "    # fit regression",
+                    "    result = sm.ols(\"logrinc ~ hdage + agehdsq + agehdcu\", data=data[cond]).fit()",
+                    "    # save coefficients",
+                    "    data.loc[cond, [\"alphaage\", \"alphagesq\", \"alphagecu\", \"alphacons\"]] = list(result.params)",
+                    "    # save residuals",
+                    "    data.loc[cond, \"residual\"] = result.resid"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 3102
+            },
+            "evaluatorReader": true,
+            "lineCount": 11
+        },
+        {
+            "id": "markdownIuoCJz",
+            "type": "markdown",
+            "body": [
+                "Perform time-series operations to create the lag/lead residuals (important: order data by idno, year before shifting columns up to create lagged residuals):"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codeg2PIZH",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "# Pre-allocate columns for speed",
+                    "data[\"combined\"] = data.seqno*data.dum_lab*data.dum_sex*data.dum_age",
+                    "newcols = [\"resid\"+str(i)+\"_\"+str(j) for i in range(1,agemax+1) for j in range(1,tlast-tinit+2)]",
+                    "data = pd.concat([data, pd.DataFrame(index=data.index, columns=newcols, dtype=float)], axis=1)",
+                    "newcols = [\"resid\"+str(i)+\"f\"+str(j) for i in range(1,agemax+1) for j in range(1,tlast-tinit+2)]",
+                    "data = pd.concat([data, pd.DataFrame(index=data.index, columns=newcols, dtype=float)], axis=1)",
+                    "",
+                    "# Sort by id and year, reset index ",
+                    "data.sort(columns=[\"unidno\", \"year\"], inplace=True)",
+                    "data.index = range(1, len(data)+1)"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 3339
+            },
+            "evaluatorReader": true,
+            "lineCount": 10
+        },
+        {
+            "id": "codeBzqjzD",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "# Create the lagged covariance vectors as columns in the dataframe",
+                    "j = ageub  # Cohort age upper bound",
+                    "m = 0      # Cohort age midpoint",
+                    "",
+                    "for i in range(agelb+1,agelast-agecell+1):",
+                    "    j += 1    # Increment upper age bound",
+                    "    m += 1    # Increment age mid-point",
+                    "    n = 0     # Lag counter",
+                    "    t = 0     # Year counter (t=1 is year 1968)",
+                    "    for k in range(tinit+1,tlast+1):",
+                    "        t += 1",
+                    "        cond = (data.combined==1) & (data.hdage.isin(range(i,j+1))) & (data.year==k)",
+                    "        data.loc[cond, \"resid\"+str(m)+\"_\"+str(t)] = data[cond].residual",
+                    "        data.loc[:, \"resid\"+str(m)+\"f\"+str(t)] = data[\"resid\"+str(m)+\"_\"+str(t)].shift(-n)",
+                    "        data.drop(\"resid\"+str(m)+\"_\"+str(t), axis=1, inplace=True)",
+                    "        n += 1   ",
+                    "        ",
+                    "print(\"Residual correlations calculated\")"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 293140
+            },
+            "evaluatorReader": true,
+            "lineCount": 18
+        },
+        {
+            "id": "markdownN4m8qq",
+            "type": "markdown",
+            "body": [
+                "Construct a `(maxcoh, agemax, agemax)` matrix that holds the autocovariances between residuals at different lags for different cohorts, and a similar sized matrix to record the observations used to calculate those covariances:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "codedP1Q6k",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "# Cov holds the covariances, N the observations used to calculate them",
+                    "Cov = np.full((maxcoh, agemax, agemax), 0)",
+                    "N = np.full((maxcoh, agemax, agemax), 0)",
+                    "",
+                    "for time in range(1, tlast-tinit+1):",
+                    "    for age in range(1, agemax+1):",
+                    "        c = min(age,time,nlag)",
+                    "        for k in range(1,c+1):",
+                    "            m = c - k",
+                    "            l = age - m",
+                    "            x = time - m",
+                    "            cohort = age - time + newcoh + 1",
+                    "            cond = (~np.isnan(data[\"resid\"+str(age)+\"f\"+str(time)])) & (~np.isnan(data[\"resid\"+str(l)+\"f\"+str(x)]))",
+                    "            obs = len(data[cond])",
+                    "            if (obs>10) & (cohort in range(1, maxcoh+1)):",
+                    "                cov = np.cov(data.loc[cond, \"resid\"+str(age)+\"f\"+str(time)], data.loc[cond, \"resid\"+str(l)+\"f\"+str(x)])",
+                    "                Cov[cohort-1, age-1, l-1] = cov[0,1]",
+                    "                N[cohort-1, age-1, l-1] = obs",
+                    "                ",
+                    "print(\"Covariance and observation matrices created\")"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "IPython",
+                "shellId": "F25D0BF5E0DD41498FDCD2D632498192",
+                "elapsedTime": 79604
+            },
+            "evaluatorReader": true,
+            "lineCount": 20
+        },
+        {
+            "id": "markdownyLT7DU",
+            "type": "markdown",
+            "body": [
+                "Finally, export the covariances and observations as a `hdf5` file to be read in by the optimization routine:"
+            ],
+            "evaluatorReader": false,
+            "mode": "preview"
+        },
+        {
+            "id": "code4bPG37",
+            "type": "code",
+            "evaluator": "IPython",
+            "input": {
+                "body": [
+                    "import h5py",
+                    "",
+                    "output = h5py.File('C:/Users/tew207/My Documents/GitHub/output.h5', 'w')",
+                    "output.create_dataset('Covariances', data=Cov)",
+                    "output.create_dataset('Observations', data=N)",
+                    "output.close()"
+                ]
+            },
+            "output": {
+                "state": {},
+                "result": {
+                    "type": "BeakerDisplay",
+                    "innertype": "Error",
+                    "object": [
+                        "Unable to create file (Unable to truncate a file which is already open)",
+                        "Unable to create file (Unable to truncate a file which is already open)<br><span  class=\"ansired\">---------------------------------------------------------------------------</span><br><span  class=\"ansired\">IOError</span>                                   Traceback (most recent call last)<br><span  class=\"ansigreen\">&lt;ipython-input-1-bf46bf161989&gt;</span> in <span  class=\"ansicyan\">&lt;module&gt;<span  class=\"ansiblue\">()</span>\n<span  class=\"ansigreen\">      1</span> <span  class=\"ansigreen\">import</span> h5py<span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">      2</span> <span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">----&gt; 3<span  class=\"ansiyellow\"> </span>output <span  class=\"ansiyellow\">=</span> h5py<span  class=\"ansiyellow\">.</span>File<span  class=\"ansiyellow\">(</span><span  class=\"ansiblue\">&apos;C:/Users/tew207/My Documents/GitHub/output.h5&apos;</span><span  class=\"ansiyellow\">,</span> <span  class=\"ansiblue\">&apos;w&apos;</span><span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">      4</span> output<span  class=\"ansiyellow\">.</span>create_dataset<span  class=\"ansiyellow\">(</span><span  class=\"ansiblue\">&apos;Covariances&apos;</span><span  class=\"ansiyellow\">,</span> data<span  class=\"ansiyellow\">=</span>Cov<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">      5</span> output<span  class=\"ansiyellow\">.</span>create_dataset<span  class=\"ansiyellow\">(</span><span  class=\"ansiblue\">&apos;Observations&apos;</span><span  class=\"ansiyellow\">,</span> data<span  class=\"ansiyellow\">=</span>N<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<br><span  class=\"ansigreen\">C:\\Users\\tew207\\Anaconda\\lib\\site-packages\\h5py\\_hl\\files.pyc</span> in <span  class=\"ansicyan\">__init__<span  class=\"ansiblue\">(self, name, mode, driver, libver, userblock_size, **kwds)</span>\n<span  class=\"ansigreen\">    229</span> <span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">    230</span>                 fapl <span  class=\"ansiyellow\">=</span> make_fapl<span  class=\"ansiyellow\">(</span>driver<span  class=\"ansiyellow\">,</span> libver<span  class=\"ansiyellow\">,</span> <span  class=\"ansiyellow\">**</span>kwds<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">--&gt; 231<span  class=\"ansiyellow\">                 </span>fid <span  class=\"ansiyellow\">=</span> make_fid<span  class=\"ansiyellow\">(</span>name<span  class=\"ansiyellow\">,</span> mode<span  class=\"ansiyellow\">,</span> userblock_size<span  class=\"ansiyellow\">,</span> fapl<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">    232</span> <span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">    233</span>             Group<span  class=\"ansiyellow\">.</span>__init__<span  class=\"ansiyellow\">(</span>self<span  class=\"ansiyellow\">,</span> fid<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<br><span  class=\"ansigreen\">C:\\Users\\tew207\\Anaconda\\lib\\site-packages\\h5py\\_hl\\files.pyc</span> in <span  class=\"ansicyan\">make_fid<span  class=\"ansiblue\">(name, mode, userblock_size, fapl, fcpl)</span>\n<span  class=\"ansigreen\">     82</span>         fid <span  class=\"ansiyellow\">=</span> h5f<span  class=\"ansiyellow\">.</span>create<span  class=\"ansiyellow\">(</span>name<span  class=\"ansiyellow\">,</span> h5f<span  class=\"ansiyellow\">.</span>ACC_EXCL<span  class=\"ansiyellow\">,</span> fapl<span  class=\"ansiyellow\">=</span>fapl<span  class=\"ansiyellow\">,</span> fcpl<span  class=\"ansiyellow\">=</span>fcpl<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">     83</span>     <span  class=\"ansigreen\">elif</span> mode <span  class=\"ansiyellow\">==</span> <span  class=\"ansiblue\">&apos;w&apos;</span><span  class=\"ansiyellow\">:</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">---&gt; 84<span  class=\"ansiyellow\">         </span>fid <span  class=\"ansiyellow\">=</span> h5f<span  class=\"ansiyellow\">.</span>create<span  class=\"ansiyellow\">(</span>name<span  class=\"ansiyellow\">,</span> h5f<span  class=\"ansiyellow\">.</span>ACC_TRUNC<span  class=\"ansiyellow\">,</span> fapl<span  class=\"ansiyellow\">=</span>fapl<span  class=\"ansiyellow\">,</span> fcpl<span  class=\"ansiyellow\">=</span>fcpl<span  class=\"ansiyellow\">)</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">     85</span>     <span  class=\"ansigreen\">elif</span> mode <span  class=\"ansiyellow\">==</span> <span  class=\"ansiblue\">&apos;a&apos;</span><span  class=\"ansiyellow\">:</span><span  class=\"ansiyellow\"></span>\n<span  class=\"ansigreen\">     86</span>         <span  class=\"ansired\"># Open in append mode (read/write).</span><span  class=\"ansiyellow\"></span><span  class=\"ansiyellow\"></span>\n<br><span  class=\"ansigreen\">h5py\\_objects.pyx</span> in <span  class=\"ansicyan\">h5py._objects.with_phil.wrapper (D:\\Build\\h5py\\h5py-2.4.x\\h5py\\_objects.c:2413)<span  class=\"ansiblue\">()</span>\n<br><span  class=\"ansigreen\">h5py\\_objects.pyx</span> in <span  class=\"ansicyan\">h5py._objects.with_phil.wrapper (D:\\Build\\h5py\\h5py-2.4.x\\h5py\\_objects.c:2370)<span  class=\"ansiblue\">()</span>\n<br><span  class=\"ansigreen\">h5py\\h5f.pyx</span> in <span  class=\"ansicyan\">h5py.h5f.create (D:\\Build\\h5py\\h5py-2.4.x\\h5py\\h5f.c:1919)<span  class=\"ansiblue\">()</span>\n<br><span  class=\"ansired\">IOError</span>: Unable to create file (Unable to truncate a file which is already open)"
+                    ]
+                },
+                "selectedType": "BeakerDisplay",
+                "pluginName": "IPython",
+                "shellId": "82E6D8A3ED5C431CABC313C8BBE008BC",
+                "elapsedTime": 396
+            },
+            "evaluatorReader": true,
+            "lineCount": 6
+        },
+        {
+            "id": "codeuRmriQ",
+            "type": "code",
+            "evaluator": "Julia",
+            "input": {
+                "body": [
+                    "using HDF5, Optim, NLopt, DataFrames",
+                    "",
+                    "path = \"C:/Users/tew207/My Documents/GitHub/psidJulia/\"",
+                    "",
+                    "CovEmp = h5read(path*\"output.h5\", \"Covariances\")",
+                    "Num = h5read(path*\"output.h5\", \"Observations\")",
+                    "",
+                    "# Invert each cohort's matrix, as HDF5 stores in row-major order",
+                    "for i = 1:size(CovEmp, 3)",
+                    "  CovEmp[:, :, i] = CovEmp[:, :, i]'",
+                    "  Num[:, :, i] = Num[:, :, i]'",
+                    "end"
+                ]
+            },
+            "output": {
+                "state": {},
+                "selectedType": "Hidden",
+                "pluginName": "Julia",
+                "shellId": "3286365D6A7B4D07884266EDD0AFD5B2",
+                "elapsedTime": 17030
+            },
+            "evaluatorReader": true,
+            "lineCount": 12
+        },
+        {
+            "id": "codeuFw5c8",
+            "type": "code",
+            "evaluator": "Julia",
+            "input": {
+                "body": [
+                    "function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64,",
+                    "                   method::Symbol, localmethod::Symbol)",
+                    "  # INPUTS: CovEmp (empirical covariances, age*age*cohorts)",
+                    "  #         Num (# of observations used to calculate covariances in CovEmp)",
+                    "  # hip = 1 estimates HIP process",
+                    "  # hip = 0 estimates RIP process",
+                    "",
+                    "  # Parameters",
+                    "  lastcoh = 1977; agecell = 4; tmax = 29; nlag = 29;",
+                    "  obs_indicator = convert(Array{Int64,3}, Num .> 10)",
+                    "  cmax = size(CovEmp,3)",
+                    "  tik = lastcoh - 1966",
+                    "  hmax = size(CovEmp,1)",
+                    "",
+                    "  # start with some initial guess x_0",
+                    "  π_1 = linspace(1, 1.2, 13)",
+                    "  π_1 = [π_1, linspace(1.2, 1.7, 3)]",
+                    "  if tmax > 20",
+                    "    π_1 = [π_1, linspace(1.7, 1.7, tmax-16)]",
+                    "  end",
+                    "",
+                    "  ϕ_1 = linspace(1,1,tmax)",
+                    "",
+                    "  x_0 = zeros(6 + 2*tmax)",
+                    "  x_0[7:7+tmax-1] = π_1",
+                    "  x_0[7+tmax:end] = ϕ_1",
+                    "",
+                    "  x_0[2] = 0.04; x_0[3] = 0.02; x_0[5] = 0.0005; x_0[6] = -0.5",
+                    "  x_0[1:6] = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]",
+                    "",
+                    "  ##############################################################################",
+                    "  ## Function to construct theoretical var-cov matrix given parameters of income",
+                    "  ## process",
+                    "  ##############################################################################",
+                    "",
+                    "  function theoretical_varcov(varα::Float64, varβ::Float64, covαβ::Float64,",
+                    "    ρ::Float64, varη::Float64, varϵ::Float64, π::Array{Float64,1},",
+                    "    ϕ::Array{Float64,1}, hmax::Int64, tmax::Int64, nlag::Int64, hip::Int64)",
+                    "",
+                    "    # Calculate CovEmpariances",
+                    "    ip_part_var = zeros(hmax); varz = zeros(hmax, tmax)",
+                    "    vary = zeros(hmax, tmax); covary = zeros(hmax, nlag, tmax)",
+                    "",
+                    "    for t = 1:tmax",
+                    "      varz[1, t] = π[t]*varη",
+                    "      for h = 1:hmax-2",
+                    "        ip_part_var[h] = varα + hip*2*covαβ*h + hip*varβ*h^2",
+                    "        varz[h, 1] = [[π[1]*varη for j = 0:(h-1)]'*[ρ^(2*j) for j = 0:(h-1)]][1]",
+                    "        if (t > 1) && (h>1)",
+                    "          varz[h, t] = ρ^2*varz[h-1,t-1] + π[t]*varη",
+                    "        end",
+                    "        vary[h,t] = ip_part_var[h] + varz[h,t] + ϕ[t]*varϵ",
+                    "      end",
+                    "    end",
+                    "",
+                    "    # Calculate Autocovariances",
+                    "    for h = 1:hmax, t = 1:tmax",
+                    "      for n = 1:min(hmax-h, tmax-t, nlag)",
+                    "        covary[h, n, t] = varα + hip*2*covαβ*(h+n) + hip*varβ*h*(h+n)",
+                    "                          + (ρ^n)*(varz[h, t])",
+                    "      end",
+                    "    end",
+                    "",
+                    "    varcov = zeros(size(CovEmp))",
+                    "",
+                    "    for coh = 1:cmax, h1 = 1:hmax-(agecell/2), h2 = max(1,h1-nlag+1):h1",
+                    "      if ((h1+tik-coh >= 1) && ((h1+tik-coh) <= tmax))",
+                    "        if (h1!=h2)",
+                    "          varcov[h1,h2,coh] = covary[h1, h1-h2, h1+tik-coh]",
+                    "        else",
+                    "          varcov[h1,h2,coh] = vary[h1, h1+tik-coh]",
+                    "        end",
+                    "      end",
+                    "    end",
+                    "",
+                    "    return varcov",
+                    "  end",
+                    "  ",
+                    "  ##############################################################################",
+                    "",
+                    "  function theoretical_varcov_guv(varα::Float64, varβ::Float64, covαβ::Float64, ",
+                    "    varϵ::Float64, varη::Float64, ρ::Float64, ϕ::Array{Float64,1}, ",
+                    "    π::Array{Float64,1}, hmax::Int64, tmax::Int64, nlag::Int64, hip::Int64)",
+                    "",
+                    "    ip_part = zeros(hmax)",
+                    "    vary = zeros(hmax, tmax)",
+                    "",
+                    "    for t = 1:tmax, h = 3:hmax",
+                    "      ip_part[h] = varα + hip*(varβ*h^2. + 2*covαβ*h)       ",
+                    "      if h <= t             ",
+                    "        vary[h, t] = ",
+                    "          (ip_part[h] + ϕ[t]*varϵ ",
+                    "           + sum(varη*(((ρ^2).^[(h-1):-1:0]).*π[t-h+1:t])) ) ",
+                    "      else",
+                    "        vary[h, t] = ",
+                    "          ( ip_part[h] + ϕ[t]*varϵ ",
+                    "           + sum(varη*((((ρ^2).^[(t-1):-1:0]).*π[1:t]))) ",
+                    "           + sum(varη*π[1]*(((ρ^2).^[(h-1):-1:t]))) )",
+                    "      end",
+                    "    end",
+                    "",
+                    "    covy = zeros(hmax, nlag, tmax)",
+                    "",
+                    "    for t= 1:tmax, h = 3:hmax, n = 1:min(h-3,t-1,nlag)                        ",
+                    "      covy[h, n, t] = ",
+                    "        ( varα + hip*(varβ*h*(h-n) + covαβ*(2*h-n)) ",
+                    "         + (ρ^n)*(vary[h-n,t-n]-ip_part[h-n] - ϕ[t-n]*varϵ) )",
+                    "    end",
+                    "",
+                    "    varcov = zeros(hmax-2, hmax-2, cmax)",
+                    "",
+                    "    for coh = 1:cmax, h1 = 1:hmax-2, h2 = max(1,h1-nlag+1):h1",
+                    "      if (h1+tik-coh >= 1) && (h1+tik-coh <= tmax)",
+                    "        if (h1!=h2)",
+                    "          varcov[h1, h2, coh] = covy[h1+2, h1-h2, h1+tik-coh]",
+                    "        else",
+                    "          varcov[h1, h2, coh] = vary[h1+2, h1+tik-coh]             ",
+                    "        end",
+                    "      end                ",
+                    "    end",
+                    "",
+                    "    return varcov",
+                    "  end",
+                    "  ",
+                    "  ##############################################################################",
+                    "  ## Objective function, depending on observed and theoretical covariance",
+                    "  ## structure",
+                    "  ##############################################################################",
+                    "",
+                    "  function objective(params::Vector{Float64}, grad, CovEmp=CovEmp,",
+                    "    obs_indicator=obs_indicator, weight=Num, tmax=tmax, nlag=nlag, agecell=agecell,",
+                    "    cmax=cmax, tik=tik, hip=hip)",
+                    "",
+                    "    # maximum experience: T + 2",
+                    "    hmax = size(CovEmp,1) + 2",
+                    "",
+                    "    # varcov = zeros(T,T,size(CovEmp,3))",
+                    "    varcov = zeros(size(CovEmp))",
+                    "",
+                    "    ρ = params[1]; varϵ = params[2]; varη = params[3]",
+                    "    varα = params[4]; varβ = params[5]; corrαβ = params[6]",
+                    "    ",
+                    "    varα*varβ != 0 ? covαβ = corrαβ*sqrt(abs(varα*varβ)) : covαβ = 0.0",
+                    "",
+                    "    π = zeros(tmax)",
+                    "    ϕ = zeros(tmax)",
+                    "",
+                    "    π[1] = 1",
+                    "    π[2:tmax] = params[7:7+tmax-2]",
+                    "    ϕ[1] = 1",
+                    "    ϕ[2:tmax-1] = params[7+tmax:7+2*tmax-3]",
+                    "    ϕ[tmax] = 1",
+                    "   ",
+                    "    ϕ .^= 2",
+                    "    π .^= 2",
+                    " ",
+                    "    # Construct theoretical var-cov matrix",
+                    "    varcov =",
+                    "      theoretical_varcov_guv(varα, varβ, covαβ, varϵ, varη, ρ, ϕ, π, ",
+                    "                             hmax, tmax, nlag, hip)",
+                    "    ",
+                    "    # matrices to hold observations for",
+                    "    ∑n = zeros(tmax,tmax)",
+                    "    # weighted theoretical covariances (from varcov)",
+                    "    theor = zeros(tmax,tmax)",
+                    "    # weighted empirical covariances (from CovEmp)",
+                    "    empir = zeros(tmax,tmax)",
+                    "",
+                    "    for t1=1:tmax, t2=1:t1",
+                    "      for coh=1:cmax",
+                    "        if (t2-tik+coh > 0) && (t1-tik+coh+1 <= hmax-2)",
+                    "          n = weight[t1-tik+coh, t2-tik+coh, coh]",
+                    "          ∑n[t1, t2] += n",
+                    "          theor[t1,t2] += n.*varcov[t1-tik+coh,t2-tik+coh,coh]",
+                    "          empir[t1,t2] += n.*CovEmp[t1-tik+coh,t2-tik+coh,coh]",
+                    "        end",
+                    "      end",
+                    "",
+                    "      if ∑n[t1,t2] > 0",
+                    "        theor[t1,t2] = theor[t1,t2]/∑n[t1,t2]",
+                    "        empir[t1,t2] = empir[t1,t2]/∑n[t1,t2]",
+                    "      else",
+                    "        theor[t1,t2] = 0",
+                    "        empir[t1,t2] = 0",
+                    "      end",
+                    "    end",
+                    "    ",
+                    "    temp = [empir-theor][:]",
+                    "    obj = [(temp'*temp)][1]",
+                    "  end",
+                    "  ",
+                    "  lb = [[-0.4, 5e-4, 5e-4, 1e-6, 1e-6, -1], 0.3*ones(2*(tmax))]",
+                    "  ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]",
+                    "  ",
+                    "  opt = Opt(method, length(x_0))",
+                    "  if method == :GMLSL",
+                    "    localopt = Opt(localmethod, length(x_0))",
+                    "    local_optimizer!(opt, localopt)",
+                    "  end",
+                    "  lower_bounds!(opt, lb)",
+                    "  upper_bounds!(opt, ub)",
+                    "  min_objective!(opt, objective)",
+                    "  ftol_abs!(opt, 1e-12)",
+                    "  maxeval!(opt, 50000)",
+                    "  maxtime!(opt, 500)",
+                    "  (optf, optx, flag) = optimize(opt, x_0)",
+                    "end"
+                ]
+            },
+            "output": {
+                "state": {},
+                "result": "<div class=\"output_subarea output_text\"><pre>estimARMA (generic function with 1 method)</pre></div>",
+                "selectedType": "Html",
+                "pluginName": "Julia",
+                "shellId": "3286365D6A7B4D07884266EDD0AFD5B2",
+                "elapsedTime": 730
+            },
+            "evaluatorReader": true,
+            "lineCount": 207
+        },
+        {
+            "id": "codedAFCjQ",
+            "type": "code",
+            "evaluator": "Julia",
+            "input": {
+                "body": [
+                    "@time (hipf, hipx, hipflag) = estimARMA(CovEmp, Num, 1, :GN_MLSL, :NL_SBPLX)",
+                    "@time (ripf, ripx, hipflag) = estimARMA(CovEmp, Num, 0, :GN_MLSL, :NL_SBPLX)",
+                    "",
+                    "@printf \"HIP:\\n ρ = %.3f, varɛ = %.3f, varη = %.3f,\\n varα = %.3f, varβ = %.5f, corrαβ = %.3f\\n\" hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]",
+                    "@printf \"RIP:\\n ρ = %.3f, varɛ = %.3f, varη = %.3f,\\n varα = %.3f, varβ = %.5f, corrαβ = %.3f\\n\" ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]"
+                ]
+            },
+            "output": {
+                "state": {},
+                "result": {
+                    "type": "Results",
+                    "outputdata": [
+                        {
+                            "type": "out",
+                            "value": "HIP:\n ρ = "
+                        },
+                        {
+                            "type": "out",
+                            "value": "0.886, varɛ = 0.073, varη = 0.010,\n varα = 0.040, varβ = 0.00026, corrαβ = -0.301\nRIP:\n ρ = 0.960, varɛ = 0.061, varη = 0.009,\n varα = 0.055, varβ = 0.00016, corrαβ = -0.365\n"
+                        }
+                    ]
+                },
+                "selectedType": "Results",
+                "pluginName": "Julia",
+                "shellId": "3286365D6A7B4D07884266EDD0AFD5B2",
+                "elapsedTime": 265
+            },
+            "evaluatorReader": true,
+            "lineCount": 5
+        },
+        {
+            "id": "codeAHAt6A",
+            "type": "code",
+            "evaluator": "Julia",
+            "input": {
+                "body": [
+                    ""
+                ]
+            },
+            "output": {
+                "state": {}
+            },
+            "evaluatorReader": true,
+            "lineCount": 1
+        }
+    ]
+}
