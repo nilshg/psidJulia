@@ -1,4 +1,4 @@
-using HDF5, Optim, NLopt
+using HDF5, Optim, NLopt, DataFrames
 
 path = "C:/Users/tew207/My Documents/GitHub/psidJulia/"
 
@@ -12,7 +12,7 @@ for i = 1:size(CovEmp, 3)
 end
 
 function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64,
-                   use_NLopt::Int64)
+                   method::Symbol, localmethod::Symbol)
   # INPUTS: CovEmp (empirical covariances, age*age*cohorts)
   #         Num (# of observations used to calculate covariances in CovEmp)
   # hip = 1 estimates HIP process
@@ -198,50 +198,145 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
       end
     end
 
+    penalty1 = 10000000.0*(min(0.0, varϵ-0.0005))^2
+    penalty2 = 100000.0*(min(0.0, varη - 0.01))^2
+    penalty8 = 100000.0*(max(0.0, ρ - 1.2))^2
+    penalty3 = 100000.0*(min(0.0, ρ + 0.4))^2
+
+    if (maximum(π) >= 5.0)
+        penalty9 = 10000000.0*(maximum(π)-3.0)^2.0
+    else
+        penalty9 = 0.0
+    end
+
+    if (minimum(π) < 0.5)
+        penalty10 = 100000.0*(((minimum(π))-0.5)^2.0)
+    else
+        penalty10 = 0.0
+    end
+
+    if (minimum(π) < 0.05)
+        penalty11 = 100000.0*(((minimum(π))-0.05)^2.0)
+    else
+        penalty11 = 0.0
+    end
+
+    penaltycorr1 = 10000000.0*(min(corrαβ+1, 0.0)^2.0)
+    penaltycorr2 = 10000000.0*(max(corrαβ-1, 0.0)^2.0)
+
+    penaltyVAR = 10000000.0*(min(0.0, varβ)^2.0)
+
+    penaltyβ = 100000.0*((hip-1)*(varβ))^2.0
+    penaltycorr3 = 10000000.0*((hip-1)*(corrαβ))^2.0
+
+    penalty = (penalty1 + penalty2 + penalty3 + penalty8
+             + penalty9 + penalty10 + penalty11 + penaltyVAR
+             + penaltycorr1 + penaltycorr2)
+
+
     temp = [empir-theor][:]
-    obj = [(temp'*temp)][1]
+    obj = [(temp'*temp)][1]*(1+penalty)
   end
 
   lb = [[-0.4, 5e-4, 5e-4, 1e-6, 1e-6, -1], 0.3*ones(2*(tmax))]
   ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]
 
-  if use_NLopt == 1
-    opt = Opt(:G_MLSL, length(x_0))
-    localopt = Opt(:LN_NELDERMEAD, length(x_0))
+  opt = Opt(method, length(x_0))
+  if method == :GMLSL
+    localopt = Opt(localmethod, length(x_0))
     local_optimizer!(opt, localopt)
-    lower_bounds!(opt, lb)
-    upper_bounds!(opt, ub)
-    min_objective!(opt, objective)
-    ftol_abs!(opt, 1e-12)
-    maxeval!(opt, 50000)
-    maxtime!(opt, 500)
-    (optf, optx, flag) = optimize(opt, x_0)
+  end
+  lower_bounds!(opt, lb)
+  upper_bounds!(opt, ub)
+  min_objective!(opt, objective)
+  ftol_abs!(opt, 1e-12)
+  maxeval!(opt, 50000)
+  maxtime!(opt, 500)
+  (optf, optx, flag) = optimize(opt, x_0)
+end
+
+
+methods_global = [:GN_CRS2_LM]#j, :GN_MLSL,]
+
+methods_local = [:LN_SBPLX]
+
+methods = String[]
+
+for method in methods_global
+  if method == :GN_MLSL
+    for lm in methods_local
+      push!(methods,string(method)*"("*string(lm)*")")
+    end
   else
-    optimum = Optim.optimize(objective, x_0, iterations = 1500)
+    push!(methods, string(method))
   end
 end
 
-function print_results(hip, rip)
-  hipf = hip.f_minimum
-  ripf = rip.f_minimum
-  hipx = hip.minimum
-  ripx = rip.minimum
-  hipflag = hip.f_converged
-  ripflag = rip.f_converged
-  @printf "The HIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.4f, corr(α,β) = %.3f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
-  @printf "The RIP estimates are:\n Convergence: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.4f, corr(α,β) = %.3f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
+l = length(methods)
+
+results_HIP = DataFrame(Method = ["HIP_Paper", methods],
+                    fmin = zeros(l+1),
+                    ρ = zeros(l+1), varɛ = zeros(l+1),
+                    varη = zeros(l+1), varα = zeros(l+1),
+                    varβ = zeros(l+1), corrαβ = zeros(l+1) )
+
+paperhip = [0.821, 0.047, 0.029, 0.022, 0.00038, -0.23]
+for i in 1:6
+  results_HIP[1, i+2] = paperhip[i]
 end
 
-function print_results(hipflag, hipf, hipx, ripflag, ripf, ripx)
-  @printf "The HIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.5f, corr(α,β) = %.2f\n" hipflag hipf hipx[1] hipx[2] hipx[3] hipx[4] hipx[5] hipx[6]
-  @printf "Paper Results HIP:\n ρ = 0.821, var(ɛ) = 0.047, var(η) = 0.029\n var(α) = 0.022, var(β) = 0.00038, corr(α,β) = -0.23\n"
-  @printf "The RIP estimates are:\n Exit flag: %s\n Function minimum %.10f\n ρ = %.3f, var(ɛ)= %.3f, var(η) = %.3f,\n var(α) = %.3f, var(β) = %.5f, corr(α,β) = %.2f\n" ripflag ripf ripx[1] ripx[2] ripx[3] ripx[4] ripx[5] ripx[6]
-  @printf "Paper Results RIP:\n ρ = 0.988, var(ɛ) = 0.061, var(η) = 0.015\n var(α) = 0.058\n"
+for method in methods_global
+  if method == :GN_MLSL
+    for lm in methods_local
+      println("Now calculating ",string(method)*"("*string(lm)*")")
+      @time (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, method, lm)
+      results_HIP[results_HIP[:Method].==string(method)*"("*string(lm)*")", :fmin] = hipf
+      for i = 1:6
+        results_HIP[results_HIP[:Method].==string(method)*"("*string(lm)*")", i+2] = hipx[i]
+      end
+    end
+  else
+    println("Now calculating ",string(method))
+    @time (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, method, :none)
+    results_HIP[results_HIP[:Method].==string(method), :fmin] = hipf
+    for i = 1:6
+      results_HIP[results_HIP[:Method].==string(method), i+2] = hipx[i]
+    end
+  end
 end
-#@time hip =  estimARMA(CovEmp, Num, 1, 0)
-#@time rip =  estimARMA(CovEmp, Num, 0, 0)
-#print_results(hip, rip)
 
-@time (hipf, hipx, hipflag) = estimARMA(CovEmp, Num, 1, 1)
-@time (ripf, ripx, ripflag) = estimARMA(CovEmp, Num, 0, 1)
-print_results(hipflag, hipf, hipx, ripflag, ripf, ripx)
+
+results_RIP = DataFrame(Method = ["RIP_Paper", methods],
+                    fmin = zeros(l+1),
+                    ρ = zeros(l+1), varɛ = zeros(l+1),
+                    varη = zeros(l+1), varα = zeros(l+1),
+                    varβ = zeros(l+1), corrαβ = zeros(l+1) )
+
+paperrip = [0.988, 0.061, 0.015, 0.058, 0.0, 0.0]
+for i in 1:6
+  results_RIP[1, i+2] = paperrip[i]
+end
+
+for method in methods_global
+  if method == :GN_MLSL
+    for lm in methods_local
+      println("Now calculating ",string(method)*"("*string(lm)*")")
+      @time (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, method, lm)
+      results_RIP[results_RIP[:Method].==string(method)*"("*string(lm)*")", :fmin] = ripf
+      for i = 1:6
+        results_RIP[results_RIP[:Method].==string(method)*"("*string(lm)*")", i+2] = ripx[i]
+      end
+    end
+  else
+    println("Now calculating ",string(method))
+    @time (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, method, :none)
+    results_RIP[results_RIP[:Method].==string(method), :fmin] = ripf
+    for i = 1:6
+      results_RIP[results_RIP[:Method].==string(method), i+2] = ripx[i]
+    end
+  end
+end
+
+
+writetable("results_RIP.csv", results_RIP)
+writetable("results_HIP.csv", results_HIP)
