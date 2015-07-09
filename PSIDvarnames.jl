@@ -96,12 +96,6 @@ function getvarnames(symbols=true)
       "ER7007","ER10010","ER13011","ER17014","ER21018","ER25018","ER36018",
      "ER42018","ER47318","ER53018"]
 
-  for (i,year) in enumerate([[1968:1997], [1999:2:2011]])
-    str = string(year)[3:end]
-    println("["*str*"] ",family_head_age[i]," ")
-  end
-
-
   family_interview_number_by_year =
     ["V3"  ,"V442","V1102","V1802","V2402","V3002","V3402","V3802","V4302",
      "V5202","V5702","V6302","V6902","V7502","V8202","V8802","V10002",
