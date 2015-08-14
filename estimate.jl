@@ -1,3 +1,5 @@
+nprocs()==CPU_CORES || addprocs(CPU_CORES-1)
+
 using HDF5, Optim, NLopt, DataFrames
 
 path = "C:/Users/tew207/My Documents/GitHub/psidJulia/"
@@ -11,7 +13,7 @@ for i = 1:size(CovEmp, 3)
   Num[:, :, i] = Num[:, :, i]'
 end
 
-function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64,
+@everywhere function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64,
                    method::Symbol, localmethod::Symbol)
   # INPUTS: CovEmp (empirical covariances, age*age*cohorts)
   #         Num (# of observations used to calculate covariances in CovEmp)
@@ -19,7 +21,7 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
   # hip = 0 estimates RIP process
 
   # Parameters
-  lastcoh = 1977; agecell = 4; tmax = 29; nlag = 29;
+  lastcoh = 1986; agecell = 4; tmax = 40; nlag = 29;
   obs_indicator = convert(Array{Int64,3}, Num .> 10)
   cmax = size(CovEmp,3)
   tik = lastcoh - 1966
@@ -34,12 +36,14 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
 
   ϕ_1 = linspace(1,1,tmax)
 
-  x_0 = zeros(6 + 2*tmax)
-  x_0[7:7+tmax-1] = π_1
-  x_0[7+tmax:end] = ϕ_1
+  x_0 = zeros(4 + (2*hip) + 2*tmax)
+  x_0[5+2*hip:5+2*hip+tmax-1] = π_1
+  x_0[5+2*hip+tmax:end] = ϕ_1
 
-  x_0[2] = 0.04; x_0[3] = 0.02; x_0[5] = 0.0005; x_0[6] = -0.5
-  x_0[1:6] = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]
+  x_0_hip = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]
+  x_0_rip = [0.80, 0.04, 0.02, 0.02]
+
+  hip == 1 ? x_0[1:6] = x_0_hip : x_0[1:4] = x_0_rip
 
   ##############################################################################
   ## Function to construct theoretical var-cov matrix given parameters of income
@@ -51,14 +55,16 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     ϕ::Array{Float64,1}, hmax::Int64, tmax::Int64, nlag::Int64, hip::Int64)
 
     # Calculate CovEmpariances
-    ip_part_var = zeros(hmax); varz = zeros(hmax, tmax)
-    vary = zeros(hmax, tmax); covary = zeros(hmax, nlag, tmax)
+    ip_part_var = zeros(hmax)
+    varz = zeros(hmax, tmax)
+    vary = zeros(hmax, tmax)
+    covary = zeros(hmax, nlag, tmax)
 
     for t = 1:tmax
       varz[1, t] = π[t]*varη
       for h = 1:hmax-2
         ip_part_var[h] = varα + hip*2*covαβ*h + hip*varβ*h^2
-        varz[h, 1] = [[π[1]*varη for j = 0:(h-1)]'*[ρ^(2*j) for j = 0:(h-1)]][1]
+        varz[h, 1] = [[π[1]*varη for k = 0:(h-1)]'*[ρ^(2*j) for j = 0:(h-1)]][1]
         if (t > 1) && (h>1)
           varz[h, t] = ρ^2*varz[h-1,t-1] + π[t]*varη
         end
@@ -151,17 +157,26 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     varcov = zeros(size(CovEmp))
 
     ρ = params[1]; varϵ = params[2]; varη = params[3]
-    varα = params[4]; varβ = params[5]; corrαβ = params[6]
+    varα = params[4];
+    if hip == 1
+      varβ = params[5]; corrαβ = params[6]
+    else
+      varβ = 0.0; corrαβ = 0.0
+    end
 
-    varα*varβ != 0 ? covαβ = corrαβ*sqrt(abs(varα*varβ)) : covαβ = 0.0
+    if (varα >= 0.0) && (varβ >= 0.0)
+      covαβ = corrαβ*sqrt(abs(varα*varβ))
+    else
+      covαβ = 0.0
+    end
 
     π = zeros(tmax)
     ϕ = zeros(tmax)
 
     π[1] = 1
-    π[2:tmax] = params[7:7+tmax-2]
+    π[2:tmax] = params[5+2*hip:5+2*hip+tmax-2]
     ϕ[1] = 1
-    ϕ[2:tmax-1] = params[7+tmax:7+2*tmax-3]
+    ϕ[2:tmax-1] = params[5+2*hip+tmax:5+2*hip+2*tmax-3]
     ϕ[tmax] = 1
 
     ϕ .^= 2
@@ -227,54 +242,91 @@ function estimARMA(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3}, hip::Int64
     penaltyVAR = 10000000.0*(min(0.0, varβ)^2.0)
 
     penaltyβ = 100000.0*((hip-1)*(varβ))^2.0
-    penaltycorr3 = 10000000.0*((hip-1)*(corrαβ))^2.0
+    penaltycorr3 = 10000000.0*((hip-1)*(abs(corrαβ)))^2.0
 
     penalty = (penalty1 + penalty2 + penalty3 + penalty8
              + penalty9 + penalty10 + penalty11 + penaltyVAR
-             + penaltycorr1 + penaltycorr2)
-
+             + penaltycorr1 + penaltycorr2 + penaltyβ
+             + penaltycorr3)
 
     temp = [empir-theor][:]
     obj = [(temp'*temp)][1]*(1+penalty)
   end
 
-  lb = [[-0.4, 5e-4, 5e-4, 1e-6, 1e-6, -1], 0.3*ones(2*(tmax))]
-  ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]
-
-  opt = Opt(method, length(x_0))
-  if method == :GMLSL
-    localopt = Opt(localmethod, length(x_0))
-    local_optimizer!(opt, localopt)
+  if hip==1
+    lb = [[-0.4, 5e-4, 5e-4, 1e-6, 1e-6, -1], 0.3*ones(2*(tmax))]
+    ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]
+  else
+    lb = [[-0.4, 5e-4, 5e-4, 1e-6], 0.3*ones(2*(tmax))]
+    ub = [[ 1.2,  2.0,  2.0,  0.5],   4*ones(2*(tmax))]
   end
-  lower_bounds!(opt, lb)
-  upper_bounds!(opt, ub)
-  min_objective!(opt, objective)
-  ftol_abs!(opt, 1e-12)
-  maxeval!(opt, 50000)
-  maxtime!(opt, 500)
-  (optf, optx, flag) = optimize(opt, x_0)
+
+  # Global minimization
+  opt_1 = Opt(method, length(x_0))
+  if method == :GN_MLSL
+    localopt = Opt(localmethod, length(x_0))
+    local_optimizer!(opt_1, localopt)
+  end
+  lower_bounds!(opt_1, lb)
+  upper_bounds!(opt_1, ub)
+  min_objective!(opt_1, objective)
+  ftol_abs!(opt_1, 1e-12)
+  maxeval!(opt_1, 50000)
+  maxtime!(opt_1, 600)
+  (optf_1, optx_1, flag_1) = optimize(opt_1, x_0)
+
+  # Local minimization
+  opt_2 = Opt(:LN_SBPLX, length(x_0))
+  lower_bounds!(opt_2, lb)
+  upper_bounds!(opt_2, ub)
+  min_objective!(opt_2, objective)
+  ftol_abs!(opt_2, 1e-12)
+  maxeval!(opt_2, 50000)
+  maxtime!(opt_2, 600)
+  (optf, optx, flag) = optimize(opt_2, optx_1)
 end
 
-
-methods_global = [:GN_CRS2_LM]#j, :GN_MLSL,]
-
+methods_global = [:GN_CRS2_LM, :GN_MLSL, :GN_ISRES, :GN_ESCH]
 methods_local = [:LN_SBPLX]
 
-methods = String[]
+HIPresults = SharedArray(Float64, (l, 6+2*tmax+1))
+RIPresults = SharedArray(Float64, (l, 6+2*tmax-1))
 
-for method in methods_global
-  if method == :GN_MLSL
+@sync @parallel for i = 1:l
+  mtd = methods_global[i]
+  if mtd == :GN_MLSL
     for lm in methods_local
-      push!(methods,string(method)*"("*string(lm)*")")
+      println("Now calculating ",string(mtd)*"("*string(lm)*")", ", HIP")
+      (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, mtd, lm)
+      HIPresults[i,1] = hipf
+      HIPresults[i,2:end] = hipx
     end
   else
-    push!(methods, string(method))
+    println("Now calculating ",string(mtd), ", HIP")
+    (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, mtd, :none)
+    HIPresults[i,1] = hipf
+    HIPresults[i,2:end] = hipx
   end
 end
 
-l = length(methods)
+@sync @parallel for i = 1:l
+  mtd = methods_global[i]
+  if mtd == :GN_MLSL
+    for lm in methods_local
+      println("Now calculating ",string(mtd)*"("*string(lm)*")",", RIP")
+      (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, mtd, lm)
+      RIPresults[i, 1] = ripf
+      RIPresults[i, 2:end] = ripx
+    end
+  else
+    println("Now calculating ",string(mtd), ", RIP")
+    (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, mtd, :none)
+    RIPresults[i, 1] = ripf
+    RIPresults[i, 2:end] = ripx
+  end
+end
 
-results_HIP = DataFrame(Method = ["HIP_Paper", methods],
+results_HIP = DataFrame(Method = ["HIP_Paper", method],
                     fmin = zeros(l+1),
                     ρ = zeros(l+1), varɛ = zeros(l+1),
                     varη = zeros(l+1), varα = zeros(l+1),
@@ -285,28 +337,7 @@ for i in 1:6
   results_HIP[1, i+2] = paperhip[i]
 end
 
-for method in methods_global
-  if method == :GN_MLSL
-    for lm in methods_local
-      println("Now calculating ",string(method)*"("*string(lm)*")")
-      @time (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, method, lm)
-      results_HIP[results_HIP[:Method].==string(method)*"("*string(lm)*")", :fmin] = hipf
-      for i = 1:6
-        results_HIP[results_HIP[:Method].==string(method)*"("*string(lm)*")", i+2] = hipx[i]
-      end
-    end
-  else
-    println("Now calculating ",string(method))
-    @time (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, method, :none)
-    results_HIP[results_HIP[:Method].==string(method), :fmin] = hipf
-    for i = 1:6
-      results_HIP[results_HIP[:Method].==string(method), i+2] = hipx[i]
-    end
-  end
-end
-
-
-results_RIP = DataFrame(Method = ["RIP_Paper", methods],
+results_RIP = DataFrame(Method = ["RIP_Paper", method],
                     fmin = zeros(l+1),
                     ρ = zeros(l+1), varɛ = zeros(l+1),
                     varη = zeros(l+1), varα = zeros(l+1),
@@ -317,26 +348,17 @@ for i in 1:6
   results_RIP[1, i+2] = paperrip[i]
 end
 
-for method in methods_global
-  if method == :GN_MLSL
-    for lm in methods_local
-      println("Now calculating ",string(method)*"("*string(lm)*")")
-      @time (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, method, lm)
-      results_RIP[results_RIP[:Method].==string(method)*"("*string(lm)*")", :fmin] = ripf
-      for i = 1:6
-        results_RIP[results_RIP[:Method].==string(method)*"("*string(lm)*")", i+2] = ripx[i]
-      end
-    end
-  else
-    println("Now calculating ",string(method))
-    @time (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, method, :none)
-    results_RIP[results_RIP[:Method].==string(method), :fmin] = ripf
-    for i = 1:6
-      results_RIP[results_RIP[:Method].==string(method), i+2] = ripx[i]
-    end
-  end
-end
-
 
 writetable("results_RIP.csv", results_RIP)
 writetable("results_HIP.csv", results_HIP)
+println(results_HIP)
+println(results_RIP)
+
+HIPresults[:, 1:7]
+RIPresults[:, 1:7]
+
+HIPmean = mean(sdata(HIPresults[1:4,:]), 1)
+RIPmean = mean(sdata(RIPresults[1:3,:]), 1)
+
+HIPmean
+RIPmean
