@@ -1,67 +1,72 @@
-using DataFrames
+nprocs()==CPU_CORES || addprocs(CPU_CORES-1)
 
-include("PSIDvarnames.jl")
+@everywhere begin
+  using HDF5, Optim, NLopt, DataFrames
 
-(individual_age, individual_grades_completed,
- individual_id_interview_number, individual_relationship_to_head,
- individual_sample_weight, individual_sequence_number,
- family_1968_interview_number, family_head_age,
- family_head_annual_hours_prior_year, family_head_total_labor_income,
- family_head_sex, family_interview_number_by_year) = getvarnames()
+  path = "C:/Users/tew207/My Documents/GitHub/psidJulia/"
 
-years = [[1968:1997],[1999:2:2011]]
-years = [1968:1993]
-
-
-function create_panel()
-  @time yind = readtable("C:/PSID/csv/IND2011ER.csv")
-  yind = yind[[:ER30001, :ER30002, individual_relationship_to_head[1:length(years)],
-               individual_age[1:length(years)]]]
-
-  n = size(yind, 1)
-  yind = yind[yind[:ER30001].<=2, :]
-  rename!(yind, :ER30001, :int_no_68)
-  rename!(yind, :ER30002, :person_no)
-  for yr = 1:length(years)
-    rename!(yind, individual_relationship_to_head[yr],
-            convert(Symbol, "ind_relhd_"*string(years[yr])))
-    rename!(yind, individual_age[yr],
-            convert(Symbol, "ind_age_"*string(years[yr])))
-  end
-  @printf "The original dataset has %d observations.\n" n
-  @printf "Dropping non-core individuals leaves %d observations\n" size(yind,1)
-  yind
-
-  for yr = 1:5#length(years)
-    @printf "\tWorking on data for year %d\n" years[yr]
-    # read in family data
-    tmp = readtable("C:/PSID/csv/FAM"*string(years[yr])*".csv")
-    # rename 1968 interview number
-    rename!(tmp, family_1968_interview_number[yr], :int_no_68)
-    # drop non-core households
-    tmp = tmp[tmp[:int_no_68].<=2,:]
-    rename!(tmp, family_interview_number_by_year[yr],
-            convert(Symbol, "int_no_"*string(years[yr])))
-    # only keep necessary columns
-    tmp =
-      tmp[[:int_no_68, :int_no_1969, family_head_age[yr], family_head_annual_hours_prior_year[yr],
-             family_head_total_labor_income[yr], family_head_sex[yr]]]
-
-    @printf "Before merge panel dimension: %d x %d\n" size(yind,1) size(yind,2)
-    @printf "Dimension of remaining family panel: %d x %d\n" size(tmp,1) size(tmp,2)
-    # merge
-    yind = join(yind, tmp, on=:int_no_68, kind=:left)
-    @printf "After merge panel dimension: %d x %d\n" size(yind,1) size(yind,2)
-    # rename remaining columns
-    rename!(yind, family_head_annual_hours_prior_year[yr],
-              convert(Symbol, "hd_hrs_"*string(years[yr])))
-    rename!(yind, family_head_sex[yr],
-              convert(Symbol, "hd_sex_"*string(years[yr])))
-    rename!(yind, family_head_age[yr],
-              convert(Symbol, "hd_age_"*string(years[yr])))
-    rename!(yind, family_head_total_labor_income[yr],
-              convert(Symbol, "hd_linc_"*string(years[yr])))
-  end
-
-  return yind
+  CovEmp = h5read(path*"output_1981_1991.h5", "Covariances")
+  Num = h5read(path*"output_1981_1991.h5", "Observations")
 end
+
+# Invert each cohort's matrix, as HDF5 stores in row-major order
+@everywhere for i = 1:size(CovEmp, 3)
+  CovEmp[:, :, i] = CovEmp[:, :, i]'
+  Num[:, :, i] = Num[:, :, i]'
+end
+
+@everywhere begin
+tinit = 1980
+tlast = 1991
+nlag = 10
+minyrs = 8
+agecell = 4
+lastcoh = tlast - minyrs + 1
+tmax = tlast - tinit + 1
+tik = tlast - tinit - minyrs + int(agecell/2)
+end
+
+methods = [:GN_CRS2_LM, :GN_MLSL, :GN_ISRES, :GN_ESCH]
+l = length(methods)
+
+HIPresults = SharedArray(Float64, (l, 6+2*tmax+1))
+RIPresults = SharedArray(Float64, (l, 6+2*tmax-1))
+
+@sync @parallel for i = 1:length(methods)
+  println("Now calculating ",string(methods[i]), ", HIP")
+  (hipf, hipx, flag) = estimARMA(CovEmp, Num, 1, methods[i])
+  HIPresults[i,1] = hipf
+  HIPresults[i,2:end] = hipx
+end
+
+@sync @parallel for i = 1:length(methods)
+  println("Now calculating ",string(methods[i]), ", RIP")
+  (ripf, ripx, flag) = estimARMA(CovEmp, Num, 0, methods[i])
+  RIPresults[i, 1] = ripf
+  RIPresults[i, 2:end] = ripx
+end
+
+results_HIP = DataFrame(Method = ["HIP_Paper", methods],
+                    fmin = zeros(l+1),
+                    ρ = zeros(l+1), varɛ = zeros(l+1),
+                    varη = zeros(l+1), varα = zeros(l+1),
+                    varβ = zeros(l+1), corrαβ = zeros(l+1) )
+
+paperhip = [0.821, 0.047, 0.029, 0.022, 0.00038, -0.23]
+for i in 1:6
+  results_HIP[1, i+2] = paperhip[i]
+end
+
+results_RIP = DataFrame(Method = ["RIP_Paper", methods],
+                    fmin = zeros(l+1),
+                    ρ = zeros(l+1), varɛ = zeros(l+1),
+                    varη = zeros(l+1), varα = zeros(l+1),
+                    varβ = zeros(l+1), corrαβ = zeros(l+1) )
+
+paperrip = [0.988, 0.061, 0.015, 0.058, 0.0, 0.0]
+for i in 1:6
+  results_RIP[1, i+2] = paperrip[i]
+end
+
+HIPmean = mean(sdata(HIPresults), 1)
+RIPmean = mean(sdata(RIPresults), 1)
