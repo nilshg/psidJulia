@@ -1,3 +1,5 @@
+using NLopt
+
 function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   hip::Int64, method::Symbol, tmax=tmax, nlag=nlag, tik=tik)
   # INPUTS: CovEmp (empirical covariances, age*age*cohorts)
@@ -8,24 +10,21 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   # Parameters
   obs_indicator = convert(Array{Int64,3}, Num .> 10)
   cmax = size(CovEmp,3)
-  agemax = size(CovEmp,1)
+  agemax = size(CovEmp,1) + 2
 
   # start with some initial guess x_0
-  π_1 = [linspace(1, 1.2, 13), linspace(1.2, 1.7, 3)]
+  π_1 = [linspace(1, 1.2, 13); linspace(1.2, 1.7, 3)]
   if tmax > 20
-    π_1 = [π_1, linspace(1.7, 1.7, tmax-16)]
+    π_1 = [π_1; linspace(1.7, 1.7, tmax-16)]
   end
 
   ϕ_1 = linspace(1,1,tmax)
 
-  x_0 = zeros(4 + (2*hip) + 2*tmax)
-  x_0[5+2*hip:5+2*hip+tmax-1] = π_1[1:tmax]
-  x_0[5+2*hip+tmax:end] = ϕ_1
-
-  x_0_hip = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]
-  x_0_rip = [0.80, 0.04, 0.02, 0.02]
-
-  hip == 1 ? x_0[1:6] = x_0_hip : x_0[1:4] = x_0_rip
+  # Initial conditions
+  x_0 = zeros(6 + 2*tmax)
+  x_0[1:6] = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]
+  x_0[7:7+tmax-1] = π_1[1:tmax]
+  x_0[7+tmax:end] = ϕ_1
 
   ##############################################################################
   ## Objective function, depending on observed and theoretical covariance
@@ -37,12 +36,7 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     cmax=cmax, tik=tik, hip=hip)
 
     ρ = params[1]; varϵ = params[2]; varη = params[3]
-    varα = params[4];
-    if hip == 1
-      varβ = params[5]; corrαβ = params[6]
-    else
-      varβ = 0.0; corrαβ = 0.0
-    end
+    varα = params[4]; varβ = params[5]; corrαβ = params[6]
 
     if (varα >= 0.0) && (varβ >= 0.0)
       covαβ = corrαβ*sqrt(abs(varα*varβ))
@@ -63,9 +57,12 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     π .^= 2
 
     # Construct theoretical var-cov matrix
-    varcov =
-      theoretical_varcov_guv(ρ, varϵ, varη, varα, varβ, covαβ,
-                             ϕ, π, tmax, nlag, CovEmp, hip)
+    #varcov =
+    #  theoretical_varcov_guv(ρ, varϵ, varη, varα, varβ, covαβ,
+    #                         ϕ, π, tmax, nlag, CovEmp, hip)
+
+    varcov = tvg(varα, varβ, covαβ, varϵ, varη, ρ, ϕ, π, agemax,
+                 tmax, nlag, hip)
 
     # matrices to hold observations for
     ∑n = zeros(tmax,tmax)
@@ -129,17 +126,12 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
              + penaltycorr1 + penaltycorr2 + penaltyβ
              + penaltycorr3)
 
-    temp = [empir-theor][:]
-    obj = [(temp'*temp)][1]*(1+penalty)
+    temp = collect(empir-theor)
+    obj = (temp'*temp)[1]*(1+penalty)
   end
 
-  if hip==1
-    lb = [[-0.4, 5e-4, 5e-4, 1e-6, 1e-6, -1], 0.3*ones(2*(tmax))]
-    ub = [[ 1.2,  2.0,  2.0,  0.5,  0.5,  1],   4*ones(2*(tmax))]
-  else
-    lb = [[-0.4, 5e-4, 5e-4, 1e-6], 0.3*ones(2*(tmax))]
-    ub = [[ 1.2,  2.0,  2.0,  0.5],   4*ones(2*(tmax))]
-  end
+  lb = [[-0.4; 5e-4; 5e-4; 1e-6; 1e-6; -1]; 0.3*ones(2*(tmax))]
+  ub = [[ 1.2;  2.0;  2.0;  0.5;  0.5;  1];   4*ones(2*(tmax))]
 
   # Global minimization
   opt_1 = Opt(method, length(x_0))
