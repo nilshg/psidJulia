@@ -1,39 +1,46 @@
 using NLopt
 
 function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
-  hip::Int64, method::Symbol, tmax=tmax, nlag=nlag, tik=tik)
-  # INPUTS: CovEmp (empirical covariances, age*age*cohorts)
-  #         Num (# of observations used to calculate covariances in CovEmp)
-  # hip = 1 estimates HIP process
-  # hip = 0 estimates RIP process
+  hip::Int64, method::Symbol, tmax=tmax)
 
   # Parameters
   obs_indicator = convert(Array{Int64,3}, Num .> 10)
   cmax = size(CovEmp,3)
-  agemax = size(CovEmp,1) + 2
+  agemax = size(CovEmp,1); hmax = agemax + 2
 
-  # start with some initial guess x_0
-  π_1 = [linspace(1, 1.2, 13); linspace(1.2, 1.7, 3)]
-  if tmax > 20
-    π_1 = [π_1; linspace(1.7, 1.7, tmax-16)]
+  # Determine number of lags by maximum number of entries in CovEmp columns
+  nlag = 0
+  for j = 1:cmax, i = 1:agemax
+    lagnow = sum(CovEmp[:,i,j].>1e-6)
+    (lagnow < nlag) || (nlag = lagnow)
   end
 
-  ϕ_1 = linspace(1,1,tmax)
+  # Determine new cohorts based on first 0 entry in CovEmp[1,1,:]
+  tik = 0
+  for i = 1:size(CovEmp,3)
+    (abs(CovEmp[1,1,i]) > 1e-7) || (tik = i-1; break)
+  end
+
+  # start with some initial guess x_0
+  π_0 = [linspace(1, 1.2, 13); linspace(1.2, 1.7, 3)]
+  if tmax > 16
+    π_0 = [π_0; linspace(1.7, 1.7, tmax-16)]
+  end
+
+  ϕ_0 = linspace(1,1,tmax)
 
   # Initial conditions
   x_0 = zeros(6 + 2*tmax)
-  x_0[1:6] = [0.80, 0.04, 0.02, 0.02, 0.00025, -0.23]
-  x_0[7:7+tmax-1] = π_1[1:tmax]
-  x_0[7+tmax:end] = ϕ_1
-
+  x_0[1:6] = [0.8, 0.04, 0.02, 0.02, hip*0.0003, -0.23*hip]
+  x_0[7:7+tmax-1] = π_0[1:tmax]
+  x_0[7+tmax:end] = ϕ_0
+  
   ##############################################################################
-  ## Objective function, depending on observed and theoretical covariance
-  ## structure
-  ##############################################################################
+  ## Objective, depending on observed and theoretical covariance structure
 
   function objective(params::Vector{Float64}, grad, CovEmp=CovEmp,
-    obs_indicator=obs_indicator, weight=Num, tmax=tmax, nlag=nlag,
-    cmax=cmax, tik=tik, hip=hip)
+    obs_indicator=obs_indicator, weight=Num, tmax=tmax, nlag=nlag, cmax=cmax,
+    tik=tik, hip=hip)
 
     ρ = params[1]; varϵ = params[2]; varη = params[3]
     varα = params[4]; varβ = params[5]; corrαβ = params[6]
@@ -48,21 +55,34 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     ϕ = zeros(tmax)
 
     π[1] = 1
-    π[2:tmax] = params[5+2*hip:5+2*hip+tmax-2]
+    π[2:tmax] = params[7:7+tmax-2]
     ϕ[1] = 1
-    ϕ[2:tmax-1] = params[5+2*hip+tmax:5+2*hip+2*tmax-3]
+    ϕ[2:tmax-1] = params[7+tmax:7+2*tmax-3]
     ϕ[tmax] = 1
 
     ϕ .^= 2
     π .^= 2
 
-    # Construct theoretical var-cov matrix
-    #varcov =
-    #  theoretical_varcov_guv(ρ, varϵ, varη, varα, varβ, covαβ,
-    #                         ϕ, π, tmax, nlag, CovEmp, hip)
+    # Construct theoretical var-cov matrix (and assert that it has entries in
+    # the same places as the empirical one)
+    varcov = tvg(varα,varβ,covαβ,varϵ,varη,ρ,ϕ,π,hmax,tmax,nlag,tik,hip)
 
-    varcov = tvg(varα, varβ, covαβ, varϵ, varη, ρ, ϕ, π, agemax,
-                 tmax, nlag, hip)
+    if (sum(abs(CovEmp).>1e-8).==sum(abs(varcov).>1e-8)!=length(CovEmp))
+      println("WARNING")
+      println("Entries in CovEmp: $(sum((abs(CovEmp).>1e-6)))")
+      println("Entries in varcov: $(sum((abs(varcov).>1e-6)))")
+      for i = 1:size(CovEmp,1), j = 1:size(CovEmp,2), c = 1:size(CovEmp,3)
+        if (abs(CovEmp[i,j,c])>1e-6) & (abs(varcov[i,j,c])<=1e-6)
+          println("Missing value in varcov[$((i,j,c))]")
+          println("CovEmp[$((i,j,c))]=$(CovEmp[i,j,c]), varcov[$((i,j,c))]=$(varcov[i,j,c])")
+        end
+        if (abs(CovEmp[i,j,c])<1e-6) & (abs(varcov[i,j,c])>=1e-6)
+          println("Extra value in varcov[$((i,j,c))]")
+          println("CovEmp[$((i,j,c))]=$(CovEmp[i,j,c]), varcov[$((i,j,c))]=$(varcov[i,j,c])")
+        end
+      end
+    end
+    @assert sum((abs(CovEmp).>1e-8).==(abs(varcov).>1e-8))==length(CovEmp)
 
     # matrices to hold observations for
     ∑n = zeros(tmax,tmax)
@@ -119,7 +139,7 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     penaltyVAR = 10000000.0*(min(0.0, varβ)^2.0)
 
     penaltyβ = 100000.0*((hip-1)*(varβ))^2.0
-    penaltycorr3 = 10000000.0*((hip-1)*(abs(corrαβ)))^2.0
+    penaltycorr3 = 100000.0*((hip-1)*(abs(corrαβ)))^2.0
 
     penalty = (penalty1 + penalty2 + penalty3 + penalty8
              + penalty9 + penalty10 + penalty11 + penaltyVAR
@@ -130,8 +150,8 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     obj = (temp'*temp)[1]*(1+penalty)
   end
 
-  lb = [[-0.4; 5e-4; 5e-4; 1e-6; 1e-6; -1]; 0.3*ones(2*(tmax))]
-  ub = [[ 1.2;  2.0;  2.0;  0.5;  0.5;  1];   4*ones(2*(tmax))]
+  lb = [[ 0.4; 5e-4; 5e-4; 1e-6; 1e-6; -1.]; 0.3*ones(2*(tmax))]
+  ub = [[ 1.2;  2.0;  2.0;  0.5;  0.5;  1.];   4*ones(2*(tmax))]
 
   # Global minimization
   opt_1 = Opt(method, length(x_0))
