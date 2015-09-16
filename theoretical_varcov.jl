@@ -8,7 +8,6 @@ function theoretical_varcov{T<:FloatingPoint}(ρ::T, varϵ::T, varη::T,
       tmax::Int64, nlag::Int64, CovEmp::Array, hip::Int64)
 
   agemax = size(CovEmp,1); cmax = size(CovEmp,3)
-
   ip_var = zeros(agemax); varz = zeros(agemax, tmax)
   vary = zeros(agemax, tmax); covy = zeros(agemax, nlag, tmax)
 
@@ -18,8 +17,8 @@ function theoretical_varcov{T<:FloatingPoint}(ρ::T, varϵ::T, varη::T,
     for age = 2:agemax
       expr = age + 2.
       ip_var[age] = varα + hip*( 2*covαβ*expr + varβ*expr^2 )
-      varz[age, 1] = [[π[1]*varη for k = 0:(expr-1)]'*[ρ^(2*j) for j = 0:(expr-1)]][1]
-      varz[age, t] = ρ^2*varz[age-1,t-1] + π[t]*varη
+      varz[age, 1] = ([π[1]*varη for k = 0:(expr-1)]'*[ρ^(2*j) for j = 0:(expr-1)])[1]
+      (t < 2) || (varz[age, t] = ρ^2*varz[age-1,t-1] + π[t]*varη)
       vary[age, t] = ip_var[age] + varz[age,t] + ϕ[t]*varϵ
     end
   end
@@ -66,12 +65,12 @@ function theoretical_varcov_guv{T<:FloatingPoint}(ρ::T, varϵ::T, varη::T,
     if age <= t
       vary[age, t] =
         (ip_part[age] + ϕ[t]*varϵ
-         + sum(varη*(((ρ^2).^[(age-1):-1:0]).*π[t-age+1:t])) )
+         + sum(varη*(((ρ^2).^collect((age-1):-1:0)).*π[t-age+1:t])) )
     else
       vary[age, t] =
         ( ip_part[age] + ϕ[t]*varϵ
-         + sum(varη*((((ρ^2).^[(t-1):-1:0]).*π[1:t])))
-         + sum(varη*π[1]*(((ρ^2).^[(age-1):-1:t]))) )
+         + sum(varη*((((ρ^2).^collect((t-1):-1:0)).*π[1:t])))
+         + sum(varη*π[1]*(((ρ^2).^collect((age-1):-1:t)))) )
     end
   end
 
@@ -100,9 +99,9 @@ end
 
 ##############################################################################
 
-function tvg(varα::Float64, varβ::Float64, covαβ::Float64,
-  varϵ::Float64, varη::Float64, ρ::Float64, ϕ::Array{Float64,1},
-  π::Array{Float64,1}, hmax::Int64, tmax::Int64, nlag::Int64, hip::Int64)
+function tvg{T<:AbstractFloat}(varα::T, varβ::T, covαβ::T, varϵ::T, varη::T,
+  ρ::T, ϕ::Array{T,1}, π::Array{T,1}, hmax::Int64, tmax::Int64, nlag::Int64,
+  tik::Int64, hip::Int64)
 
   ip_part = zeros(hmax)
   vary = zeros(hmax, tmax)
