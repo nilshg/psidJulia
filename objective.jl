@@ -34,7 +34,7 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   x_0[1:6] = [0.8, 0.04, 0.02, 0.02, hip*0.0003, -0.23*hip]
   x_0[7:7+tmax-1] = π_0[1:tmax]
   x_0[7+tmax:end] = ϕ_0
-  
+
   ##############################################################################
   ## Objective, depending on observed and theoretical covariance structure
 
@@ -67,22 +67,13 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     # the same places as the empirical one)
     varcov = tvg(varα,varβ,covαβ,varϵ,varη,ρ,ϕ,π,hmax,tmax,nlag,tik,hip)
 
-    if (sum(abs(CovEmp).>1e-8).==sum(abs(varcov).>1e-8)!=length(CovEmp))
-      println("WARNING")
-      println("Entries in CovEmp: $(sum((abs(CovEmp).>1e-6)))")
-      println("Entries in varcov: $(sum((abs(varcov).>1e-6)))")
+    if (sum((abs(CovEmp).>1e-9).==(abs(varcov).>1e-9))!=length(CovEmp))
       for i = 1:size(CovEmp,1), j = 1:size(CovEmp,2), c = 1:size(CovEmp,3)
-        if (abs(CovEmp[i,j,c])>1e-6) & (abs(varcov[i,j,c])<=1e-6)
+        if (abs(CovEmp[i,j,c])>1e-8) & (abs(varcov[i,j,c])<=1e-8)
           println("Missing value in varcov[$((i,j,c))]")
-          println("CovEmp[$((i,j,c))]=$(CovEmp[i,j,c]), varcov[$((i,j,c))]=$(varcov[i,j,c])")
-        end
-        if (abs(CovEmp[i,j,c])<1e-6) & (abs(varcov[i,j,c])>=1e-6)
-          println("Extra value in varcov[$((i,j,c))]")
-          println("CovEmp[$((i,j,c))]=$(CovEmp[i,j,c]), varcov[$((i,j,c))]=$(varcov[i,j,c])")
         end
       end
     end
-    @assert sum((abs(CovEmp).>1e-8).==(abs(varcov).>1e-8))==length(CovEmp)
 
     # matrices to hold observations for
     ∑n = zeros(tmax,tmax)
@@ -150,8 +141,8 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
     obj = (temp'*temp)[1]*(1+penalty)
   end
 
-  lb = [[ 0.4; 5e-4; 5e-4; 1e-6; 1e-6; -1.]; 0.3*ones(2*(tmax))]
   ub = [[ 1.2;  2.0;  2.0;  0.5;  0.5;  1.];   4*ones(2*(tmax))]
+  lb = [[ 0.4; 5e-4; 5e-4; 1e-6; hip*1e-6; -1*hip]; 0.3*ones(2*(tmax))]
 
   # Global minimization
   opt_1 = Opt(method, length(x_0))
@@ -162,8 +153,7 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   lower_bounds!(opt_1, lb)
   upper_bounds!(opt_1, ub)
   min_objective!(opt_1, objective)
-  ftol_abs!(opt_1, 1e-12)
-  maxeval!(opt_1, 50000)
+  ftol_abs!(opt_1, 1e-6)
   maxtime!(opt_1, 1000)
   (optf_1, optx_1, flag_1) = optimize(opt_1, x_0)
 
@@ -172,8 +162,15 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   lower_bounds!(opt_2, lb)
   upper_bounds!(opt_2, ub)
   min_objective!(opt_2, objective)
-  ftol_abs!(opt_2, 1e-12)
-  maxeval!(opt_2, 50000)
+  ftol_abs!(opt_2, 1e-6)
   maxtime!(opt_2, 1000)
   (optf, optx, flag) = optimize(opt_2, optx_1)
+
+  ρ = optx[1]; varϵ = optx[2]; varη = optx[3]; varα = optx[4]; varβ = optx[5];
+  corrαβ = optx[6]; covαβ = corrαβ*sqrt(abs(varα*varβ)); π = zeros(tmax);
+  ϕ = zeros(tmax); π[1] = 1; π[2:tmax] = optx[7:7+tmax-2];ϕ[1] = 1;
+  ϕ[2:tmax-1] = optx[7+tmax:7+2*tmax-3]; ϕ[tmax] = 1; ϕ .^= 2; π .^= 2
+  varcov = tvg(varα,varβ,covαβ,varϵ,varη,ρ,ϕ,π,hmax,tmax,nlag,tik,hip)
+
+  return (optf, optx, flag, varcov)
 end
