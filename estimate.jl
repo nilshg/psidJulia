@@ -1,12 +1,21 @@
-using NLopt
+using HDF5, NLopt
 
-function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
-  hip::Int64, method::Symbol, tmax=tmax)
+function estimate(data::AbstractString, hip::Int64, method::Symbol, tmax::Int64)
+
+  CovEmp = h5read(data, "Covariances")
+  Num = h5read(data, "Observations")
+  cmax = size(CovEmp, 3)
+  agemax = size(CovEmp, 2)
+
+  # Invert matrices as hd5 stores in column-order
+  for i = 1:cmax
+    CovEmp[:, :, i] = CovEmp[:, :, i]'
+    Num[:, :, i] = Num[:, :, i]'
+  end
 
   # Parameters
   obs_indicator = convert(Array{Int64,3}, Num .> 10)
-  cmax = size(CovEmp,3)
-  agemax = size(CovEmp,1); hmax = agemax + 2
+  hmax = agemax + 2
 
   # Determine number of lags by maximum number of entries in CovEmp columns
   nlag = 0
@@ -65,7 +74,7 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
 
     # Construct theoretical var-cov matrix (and assert that it has entries in
     # the same places as the empirical one)
-    varcov = tvg(varα,varβ,covαβ,varϵ,varη,ρ,ϕ,π,hmax,tmax,nlag,tik,hip)
+    varcov = tvg(varα,varβ,covαβ,varϵ,varη,ρ,ϕ,π,hmax,cmax,tmax,nlag,tik,hip)
 
     if (sum((abs(CovEmp).>1e-9).==(abs(varcov).>1e-9))!=length(CovEmp))
       for i = 1:size(CovEmp,1), j = 1:size(CovEmp,2), c = 1:size(CovEmp,3)
@@ -153,8 +162,8 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   lower_bounds!(opt_1, lb)
   upper_bounds!(opt_1, ub)
   min_objective!(opt_1, objective)
-  ftol_abs!(opt_1, 1e-6)
-  maxtime!(opt_1, 1000)
+  ftol_abs!(opt_1, 1e-7)
+  maxtime!(opt_1, 12000)
   (optf_1, optx_1, flag_1) = optimize(opt_1, x_0)
 
   # Local minimization
@@ -162,15 +171,7 @@ function estimate(CovEmp::Array{Float64, 3}, Num::Array{Float64, 3},
   lower_bounds!(opt_2, lb)
   upper_bounds!(opt_2, ub)
   min_objective!(opt_2, objective)
-  ftol_abs!(opt_2, 1e-6)
-  maxtime!(opt_2, 1000)
+  ftol_abs!(opt_2, 1e-7)
+  maxtime!(opt_2, 12000)
   (optf, optx, flag) = optimize(opt_2, optx_1)
-
-  ρ = optx[1]; varϵ = optx[2]; varη = optx[3]; varα = optx[4]; varβ = optx[5];
-  corrαβ = optx[6]; covαβ = corrαβ*sqrt(abs(varα*varβ)); π = zeros(tmax);
-  ϕ = zeros(tmax); π[1] = 1; π[2:tmax] = optx[7:7+tmax-2];ϕ[1] = 1;
-  ϕ[2:tmax-1] = optx[7+tmax:7+2*tmax-3]; ϕ[tmax] = 1; ϕ .^= 2; π .^= 2
-  varcov = tvg(varα,varβ,covαβ,varϵ,varη,ρ,ϕ,π,hmax,tmax,nlag,tik,hip)
-
-  return (optf, optx, flag, varcov)
 end
