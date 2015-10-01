@@ -1,34 +1,7 @@
 using HDF5, NLopt
 
-function estimate(data::AbstractString, hip::Int64, method::Symbol, tmax::Int64)
-
-  CovEmp = h5read(data, "Covariances")
-  Num = h5read(data, "Observations")
-  cmax = size(CovEmp, 3)
-  agemax = size(CovEmp, 2)
-
-  # Invert matrices as hd5 stores in column-order
-  for i = 1:cmax
-    CovEmp[:, :, i] = CovEmp[:, :, i]'
-    Num[:, :, i] = Num[:, :, i]'
-  end
-
-  # Parameters
-  obs_indicator = convert(Array{Int64,3}, Num .> 10)
-  hmax = agemax + 2
-
-  # Determine number of lags by maximum number of entries in CovEmp columns
-  nlag = 0
-  for j = 1:cmax, i = 1:agemax
-    lagnow = sum(CovEmp[:,i,j].>1e-6)
-    (lagnow < nlag) || (nlag = lagnow)
-  end
-
-  # Determine new cohorts based on first 0 entry in CovEmp[1,1,:]
-  tik = 0
-  for i = 1:size(CovEmp,3)
-    (abs(CovEmp[1,1,i]) > 1e-7) || (tik = i-1; break)
-  end
+function mdest(data::AbstractString, hip::Int64, method::Symbol, tmax::Int64,
+  cmax=cmax, agemax=agemax, nlag=nlag, CovEmp=CovEmp, Num=Num, tik=tik)
 
   # start with some initial guess x_0
   π_0 = [linspace(1, 1.2, 13); linspace(1.2, 1.7, 3)]
@@ -79,7 +52,9 @@ function estimate(data::AbstractString, hip::Int64, method::Symbol, tmax::Int64)
     if (sum((abs(CovEmp).>1e-9).==(abs(varcov).>1e-9))!=length(CovEmp))
       for i = 1:size(CovEmp,1), j = 1:size(CovEmp,2), c = 1:size(CovEmp,3)
         if (abs(CovEmp[i,j,c])>1e-8) & (abs(varcov[i,j,c])<=1e-8)
-          println("Missing value in varcov[$((i,j,c))]")
+          if Num[i,j,c] > 10
+            println("Missing value in varcov[$((i,j,c))]")
+          end
         end
       end
     end
@@ -162,8 +137,8 @@ function estimate(data::AbstractString, hip::Int64, method::Symbol, tmax::Int64)
   lower_bounds!(opt_1, lb)
   upper_bounds!(opt_1, ub)
   min_objective!(opt_1, objective)
-  ftol_abs!(opt_1, 1e-7)
-  maxtime!(opt_1, 12000)
+  ftol_abs!(opt_1, 1e-8)
+  maxtime!(opt_1, 1000)
   (optf_1, optx_1, flag_1) = optimize(opt_1, x_0)
 
   # Local minimization
@@ -171,7 +146,7 @@ function estimate(data::AbstractString, hip::Int64, method::Symbol, tmax::Int64)
   lower_bounds!(opt_2, lb)
   upper_bounds!(opt_2, ub)
   min_objective!(opt_2, objective)
-  ftol_abs!(opt_2, 1e-7)
-  maxtime!(opt_2, 12000)
+  ftol_abs!(opt_2, 1e-8)
+  maxtime!(opt_2, 1000)
   (optf, optx, flag) = optimize(opt_2, optx_1)
 end

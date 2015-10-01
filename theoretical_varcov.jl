@@ -3,7 +3,7 @@
 ## process
 ##############################################################################
 
-function theoretical_varcov{T<:FloatingPoint}(ρ::T, varϵ::T, varη::T,
+function theoretical_varcov{T<:AbstractFloat}(ρ::T, varϵ::T, varη::T,
       varα::T, varβ::T, covαβ::T, ϕ::Array{T,1},  π::Array{T,1},
       tmax::Int64, nlag::Int64, CovEmp::Array, hip::Int64)
 
